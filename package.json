@@ -1,0 +1,25 @@
+{
+  "name": "focus-card",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~56.0.21",
+    "expo-build-properties": "~56.0.27",
+    "expo-dev-client": "~56.0.26",
+    "expo-status-bar": "~56.0.4",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-nfc-manager": "3.17.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "~6.0.3"
+  },
+  "private": true
+}

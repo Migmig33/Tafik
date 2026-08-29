@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Focus Card",
+    "slug": "focus-card",
+    "scheme": "focuscard",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.yourcompany.focuscard",
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.PACKAGE_USAGE_STATS",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.QUERY_ALL_PACKAGES"
+      ]
+    },
+         "plugins": [
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Focus Card taps your card to start and end a focus session."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e712bc81-5ef2-41b6-8664-cfd3b4e1ad42"
+      }
+    }
+  }
+}
