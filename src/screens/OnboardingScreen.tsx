@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
+import { hasOverlayPermission, hasUsageAccess } from "../blocking";
 import { Body, PrimaryButton, Screen, Title } from "../components";
 import { Nav } from "../nav";
 import { setOnboardingDone } from "../store";
 import { space, useTheme } from "../theme";
+import { Text } from "../typography";
 
 // The four permissions the app cannot function without. On a real device these
 // buttons should deep-link into the correct system settings screen and then
@@ -41,15 +43,29 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
   const [granted, setGranted] = useState<Record<string, boolean>>({});
   const allGranted = PERMS.every((p) => granted[p.key]);
 
-  // NOTE: this optimistically marks a permission granted after the user returns
-  // from settings. In the build, replace with a real check before flipping it.
+  React.useEffect(() => {
+    const refresh = async () => {
+      const [usage, overlay] = await Promise.all([hasUsageAccess(), hasOverlayPermission()]);
+      setGranted((current) => ({ ...current, usage, overlay }));
+    };
+    refresh();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => subscription.remove();
+  }, []);
+
   const grant = async (p: (typeof PERMS)[number]) => {
     try {
       await Linking.sendIntent(p.settings);
     } catch {
       /* some intents need extras; refine per permission in the native layer */
     }
-    setGranted((g) => ({ ...g, [p.key]: true }));
+    // Usage and overlay access are verified when the app becomes active again.
+    // NFC/notification setup remains handled by their platform APIs at use time.
+    if (p.key !== "usage" && p.key !== "overlay") {
+      setGranted((g) => ({ ...g, [p.key]: true }));
+    }
   };
 
   return (

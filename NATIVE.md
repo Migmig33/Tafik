@@ -1,8 +1,7 @@
-# The native blocking module (next build step)
+# Native blocking module architecture
 
-Everything in `src/` is the JS shell and runs today. The actual *blocking* is
-native Android and is **not** implemented yet — this file is the spec for it.
-Do this as one focused session after the shell is on your phone.
+The native Android blocker is implemented in `modules/blocking`. This document
+records its architecture and constraints for future maintenance.
 
 ## What it must do
 
@@ -12,7 +11,7 @@ Do this as one focused session after the shell is on your phone.
 2. **Shield blocked apps.** When the foreground package is in the blocklist and a
    session is active, draw a full-screen overlay window
    (`WindowManager` + `TYPE_APPLICATION_OVERLAY`, requires `SYSTEM_ALERT_WINDOW`).
-   The overlay is the shield — mirror the design of `BlockOverlayScreen.tsx`.
+   The overlay is the shield and is drawn directly by `ForegroundBlockService.kt`.
 3. **Own session state.** Start/stop shielding on command from JS, and keep the
    persistent foreground notification alive while a session runs.
 4. **Read the blocklist + card UID without JS awake.** Mirror them into
@@ -35,6 +34,10 @@ isSessionActive(): Promise<boolean>
 hasUsageAccess(): Promise<boolean>                   // for real onboarding checks
 hasOverlayPermission(): Promise<boolean>
 getInstalledApps(): Promise<{ name: string; pkg: string }[]>  // replace MOCK_APPS
+getInstalledAppsWithIcons(): Promise<string>                   // names, packages, icon data URIs
+getScreenTimeToday(): Promise<number>                          // foreground app time in ms
+getAppScreenTimeToday(): Promise<string>                        // per-app foreground time JSON
+getScreenTimeInsights(): Promise<string>                        // seven daily totals + apps JSON
 ```
 
 Wire `getInstalledApps()` into `BlocklistScreen` (replace `MOCK_APPS`) and the

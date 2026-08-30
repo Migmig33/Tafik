@@ -4,11 +4,11 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
 import { radius, space, useTheme } from "./theme";
+import { Text } from "./typography";
 
 export function Screen({
   children,
