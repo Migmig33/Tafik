@@ -28,6 +28,10 @@ private data class AppScreenTimeEntry(
   val milliseconds: Long
 )
 
+// Two weeks, not one: the chart shows the last seven days, and the week-over-week
+// trend needs the seven before them to have something to compare against.
+private const val INSIGHT_DAYS = 14
+
 class BlockingModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Blocking")
@@ -169,7 +173,7 @@ class BlockingModule : Module() {
       val labelCache = mutableMapOf<String, String>()
       val days = JSONArray()
 
-      for (offset in 6 downTo 0) {
+      for (offset in (INSIGHT_DAYS - 1) downTo 0) {
         val startCalendar = today.clone() as Calendar
         startCalendar.add(Calendar.DAY_OF_YEAR, -offset)
         val start = startCalendar.timeInMillis

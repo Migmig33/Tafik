@@ -5,7 +5,7 @@ import { Poppins_600SemiBold } from "@expo-google-fonts/poppins/600SemiBold";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins/700Bold";
 import { useFonts } from "expo-font";
 import React, { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { endBlockingSession, isBlockingSessionActive, startBlockingSession } from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
@@ -114,6 +114,17 @@ function AppContent() {
     );
   }
 
+  // Where every "Unlock Premium" affordance leads.
+  // TODO(step 5): replace the alert with nav("premium") once PremiumScreen
+  // exists. Routing there now would land the user on a blank screen.
+  const showPremium = () => {
+    Alert.alert(
+      "TapIn Premium",
+      "A one-time unlock for the full picture: your seven-day chart and app breakdown, your own message on the shield, and more than one card.",
+      [{ text: "OK" }]
+    );
+  };
+
   const startSession = async () => {
     const list = await getBlocklist();
     const sessionStartedAt = Date.now();
@@ -167,7 +178,7 @@ function AppContent() {
           />
         )}
         {screen === "blocklist" && <BlocklistScreen />}
-        {screen === "insights" && <InsightsScreen />}
+        {screen === "insights" && <InsightsScreen onUnlock={showPremium} />}
         {screen === "settings" && <SettingsScreen />}
         {screen === "cardSetup" && <CardSetupScreen nav={setScreen} />}
         {screen === "emergency" && (

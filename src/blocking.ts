@@ -80,6 +80,13 @@ export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
     }));
 }
 
+/**
+ * Daily screen time, oldest day first, ending with today.
+ *
+ * Newer builds return 14 days so a week can be compared against the one before
+ * it; builds from before that return 7. Callers must therefore treat the length
+ * as a maximum and not index back from it blindly.
+ */
 export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getScreenTimeInsights !== "function") {
