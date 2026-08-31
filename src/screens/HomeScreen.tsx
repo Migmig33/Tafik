@@ -4,9 +4,9 @@ import type { LucideIcon } from "lucide-react-native";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import Timer from "lucide-react-native/icons/timer";
-import { Body, PrimaryButton, Screen, TapRipple, Title } from "../components";
+import { Body, GhostButton, PrimaryButton, Screen, TapRipple, Title } from "../components";
 import { Nav } from "../nav";
-import { readCardUid } from "../nfc";
+import { cancelCardRead, readCardUid } from "../nfc";
 import { getCardUid, getTodayStats, TodayStats } from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
@@ -45,6 +45,10 @@ export default function HomeScreen({
   const { colors } = useTheme();
   const [now, setNow] = useState(Date.now());
   const [stats, setStats] = useState<TodayStats>({ seconds: 0, count: 0, streak: 0 });
+  // Which action is waiting for a card tap, if any. Arming the reader is a
+  // deliberate step so a stray tap cannot lock or unlock the phone, and so the
+  // button cannot be spammed into opening several reads at once.
+  const [scanning, setScanning] = useState<null | "start" | "end">(null);
 
   // Refresh stats whenever we return to the idle state (i.e. a session ended).
   useEffect(() => {
@@ -57,15 +61,23 @@ export default function HomeScreen({
     return () => clearInterval(id);
   }, [active]);
 
-  const tapCard = async (mode: "start" | "end") => {
+  // Leaving the screen with the reader armed would leave it listening in the
+  // background, so drop the pending read on the way out.
+  useEffect(() => () => void cancelCardRead(), []);
+
+  const beginScan = async (mode: "start" | "end") => {
+    if (scanning) return;
     const stored = await getCardUid();
     if (!stored) {
       nav("cardSetup");
       return;
     }
+    setScanning(mode);
     const r = await readCardUid();
+    setScanning(null);
     if ("error" in r) {
-      Alert.alert("Couldn't read card", r.error);
+      // A cancel is the user's own doing, so there is nothing to report.
+      if (!r.cancelled) Alert.alert("Couldn't read card", r.error);
       return;
     }
     if (r.uid !== stored) {
@@ -79,13 +91,16 @@ export default function HomeScreen({
     }
   };
 
+  const cancelScan = () => void cancelCardRead();
+
   if (active) {
     const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+    const waiting = scanning === "end";
     return (
       <Screen tinted>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <Text style={{ color: colors.accent, fontWeight: "600", letterSpacing: 0.3 }}>
-            FOCUS SESSION ACTIVE
+            {waiting ? "READY TO SCAN" : "FOCUS SESSION ACTIVE"}
           </Text>
         </View>
 
@@ -105,12 +120,28 @@ export default function HomeScreen({
           <Body dim>{blockCount} apps blocked</Body>
         </View>
 
-        <Body dim>Tap your card to end the session.</Body>
+        <Body dim>
+          {waiting
+            ? "Hold your card to the back of your phone."
+            : "Press End session, then tap your card."}
+        </Body>
         <View style={{ height: space(1.5) }} />
-        <PrimaryButton label="Tap card to end" onPress={() => tapCard("end")} />
+        {waiting ? (
+          <>
+            <PrimaryButton label="Waiting for card…" onPress={() => {}} disabled />
+            <GhostButton label="Cancel" onPress={cancelScan} />
+          </>
+        ) : (
+          <>
+            <PrimaryButton label="End session" onPress={() => beginScan("end")} />
+            <GhostButton label="Card lost? Emergency unlock" onPress={() => nav("emergency")} />
+          </>
+        )}
       </Screen>
     );
   }
+
+  const waiting = scanning === "start";
 
   return (
     <Screen>
@@ -129,13 +160,17 @@ export default function HomeScreen({
       </View>
 
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <TapRipple />
+        <TapRipple active={waiting} />
         <View style={{ height: space(3) }} />
-        <Text style={{ color: colors.text, fontSize: 20, fontWeight: "600" }}>
-          Press TapIn to begin
+        <Text style={{ color: waiting ? colors.accent : colors.text, fontSize: 20, fontWeight: "600" }}>
+          {waiting ? "Ready to scan" : "Press TapIn to begin"}
         </Text>
         <View style={{ height: space(0.5) }} />
-        <Body dim>Then tap your card. {blockCount} apps will be locked.</Body>
+        <Body dim>
+          {waiting
+            ? "Hold your card to the back of your phone."
+            : `Then tap your card. ${blockCount} apps will be locked.`}
+        </Body>
       </View>
 
       <Text style={[styles.sectionLabel, { color: colors.textDim }]}>TODAY&apos;S FOCUS</Text>
@@ -144,7 +179,14 @@ export default function HomeScreen({
         <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
       </View>
 
-      <PrimaryButton label="TapIn" onPress={() => tapCard("start")} />
+      {waiting ? (
+        <>
+          <PrimaryButton label="Waiting for card…" onPress={() => {}} disabled />
+          <GhostButton label="Cancel" onPress={cancelScan} />
+        </>
+      ) : (
+        <PrimaryButton label="TapIn" onPress={() => beginScan("start")} />
+      )}
       </ScrollView>
     </Screen>
   );

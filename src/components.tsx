@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -134,7 +134,11 @@ export function TapRipple({ active = true }: { active?: boolean }) {
   const a = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // Park the rings at the start so re-arming always pulses from zero.
+      a.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.timing(a, {
         toValue: 1,
@@ -157,8 +161,12 @@ export function TapRipple({ active = true }: { active?: boolean }) {
 
   return (
     <View style={{ width: 160, height: 160, alignItems: "center", justifyContent: "center" }}>
-      <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0)]} />
-      <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0.5)]} />
+      {active && (
+        <>
+          <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0)]} />
+          <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0.5)]} />
+        </>
+      )}
       <View
         style={{
           width: 64,
@@ -181,3 +189,122 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
 });
+
+/**
+ * Press-and-hold confirmation. The delay is the safeguard: it makes an
+ * irreversible action impossible to trigger by accident or by reflex, and it
+ * gives the user the whole hold to change their mind. Letting go at any point
+ * cancels and rewinds. onComplete fires only if the hold runs the full length.
+ */
+export function HoldButton({
+  label,
+  seconds,
+  onComplete,
+  disabled,
+}: {
+  label: string;
+  seconds: number;
+  onComplete: () => void;
+  disabled?: boolean;
+}) {
+  const { colors } = useTheme();
+  const progress = useRef(new Animated.Value(0)).current;
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [holding, setHolding] = useState(false);
+  const [left, setLeft] = useState(seconds);
+
+  const stopTimer = () => {
+    if (timer.current !== null) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+  };
+
+  // A hold that outlives the screen would fire onComplete into nothing.
+  useEffect(() => {
+    return () => {
+      stopTimer();
+      progress.stopAnimation();
+    };
+  }, [progress]);
+
+  const start = () => {
+    if (disabled) return;
+    setHolding(true);
+    setLeft(seconds);
+    const startedAt = Date.now();
+    stopTimer();
+    timer.current = setInterval(() => {
+      const remaining = seconds - Math.floor((Date.now() - startedAt) / 1000);
+      setLeft(Math.max(0, remaining));
+    }, 250);
+    // Width can't be driven natively, but one bar over 30s is cheap.
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: seconds * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      stopTimer();
+      setHolding(false);
+      progress.setValue(0);
+      onComplete();
+    });
+  };
+
+  const cancel = () => {
+    stopTimer();
+    progress.stopAnimation();
+    setHolding(false);
+    setLeft(seconds);
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: 220,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      accessibilityHint={`Press and hold for ${seconds} seconds to confirm`}
+      onPressIn={start}
+      onPressOut={cancel}
+      disabled={disabled}
+      style={{
+        height: 60,
+        borderRadius: radius.pill,
+        borderWidth: 1.5,
+        borderColor: disabled ? colors.border : colors.accent,
+        backgroundColor: colors.surface,
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          backgroundColor: colors.accentWash,
+          width: progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
+        }}
+      />
+      <Text
+        style={{
+          color: disabled ? colors.textDim : colors.accent,
+          fontSize: 16,
+          fontWeight: "600",
+          fontVariant: ["tabular-nums"],
+        }}
+      >
+        {holding ? `Keep holding… ${left}s` : label}
+      </Text>
+    </Pressable>
+  );
+}

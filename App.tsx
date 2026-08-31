@@ -11,6 +11,7 @@ import BottomNav from "./src/BottomNav";
 import { ScreenName } from "./src/nav";
 import BlocklistScreen from "./src/screens/BlocklistScreen";
 import CardSetupScreen from "./src/screens/CardSetupScreen";
+import EmergencyScreen from "./src/screens/EmergencyScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import IntroScreen from "./src/screens/IntroScreen";
 import InsightsScreen from "./src/screens/InsightsScreen";
@@ -18,6 +19,8 @@ import OnboardingScreen from "./src/screens/OnboardingScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import {
   clearActiveSessionStartedAt,
+  consumeEmergencyUnlock,
+  getEmergencyUnlocksLeft,
   getActiveSessionStartedAt,
   getBlocklist,
   getOnboardingDone,
@@ -98,6 +101,18 @@ function AppContent() {
     setStartedAt(null);
   };
 
+  // The card-free way out. The allowance is checked before anything is torn
+  // down, and only spent once the session has actually ended.
+  const emergencyUnlock = async () => {
+    if ((await getEmergencyUnlocksLeft()) <= 0) {
+      throw new Error(
+        "You have no emergency unlocks left this month. They refill on the 1st."
+      );
+    }
+    await endSession();
+    return consumeEmergencyUnlock();
+  };
+
   return (
     <>
       <StatusBar style={isDark ? "light" : "dark"} />
@@ -117,6 +132,9 @@ function AppContent() {
         {screen === "insights" && <InsightsScreen />}
         {screen === "settings" && <SettingsScreen />}
         {screen === "cardSetup" && <CardSetupScreen nav={setScreen} />}
+        {screen === "emergency" && (
+          <EmergencyScreen nav={setScreen} active={active} onUnlock={emergencyUnlock} />
+        )}
 
         {(screen === "home" ||
           screen === "insights" ||

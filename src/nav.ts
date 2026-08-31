@@ -4,6 +4,7 @@ export type ScreenName =
   | "insights"
   | "blocklist"
   | "settings"
-  | "cardSetup";
+  | "cardSetup"
+  | "emergency";
 
 export type Nav = (screen: ScreenName) => void;

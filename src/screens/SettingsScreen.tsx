@@ -6,11 +6,18 @@ import Layers from "lucide-react-native/icons/layers";
 import Monitor from "lucide-react-native/icons/monitor";
 import Moon from "lucide-react-native/icons/moon";
 import ScanLine from "lucide-react-native/icons/scan-line";
+import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
 import { hasOverlayPermission, hasUsageAccess } from "../blocking";
 import { Body, Screen, Title } from "../components";
+import {
+  EMERGENCY_HOLD_SECONDS,
+  EMERGENCY_UNLOCKS_PER_MONTH,
+  emergencyResetLabel,
+  getEmergencyUnlocksLeft,
+} from "../store";
 import { radius, space, ThemeMode, useTheme } from "../theme";
 import { Text } from "../typography";
 
@@ -19,10 +26,16 @@ type AccessState = { usage: boolean; overlay: boolean };
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useTheme();
   const [access, setAccess] = useState<AccessState>({ usage: false, overlay: false });
+  const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
-    const [usage, overlay] = await Promise.all([hasUsageAccess(), hasOverlayPermission()]);
+    const [usage, overlay, left] = await Promise.all([
+      hasUsageAccess(),
+      hasOverlayPermission(),
+      getEmergencyUnlocksLeft(),
+    ]);
     setAccess({ usage, overlay });
+    setEmergencyLeft(left);
   }, []);
 
   useEffect(() => {
@@ -137,6 +150,25 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>EMERGENCY ACCESS</Text>
+        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.row}>
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <ShieldAlert size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Emergency unlocks</Text>
+              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                Lost your card? Hold the unlock on the session screen for {EMERGENCY_HOLD_SECONDS}s.
+                Resets to {EMERGENCY_UNLOCKS_PER_MONTH} on {emergencyResetLabel()}.
+              </Text>
+            </View>
+            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
+              {emergencyLeft === null ? "—" : `${emergencyLeft} left`}
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </Screen>

@@ -25,8 +25,16 @@ export async function isNfcSupported(): Promise<boolean> {
   }
 }
 
+// A read stays open until a card is tapped, so the UI needs a way to back out
+// of one. cancelCardRead() aborts the pending request; the in-flight read then
+// resolves as { cancelled: true } rather than an error the UI would alert about.
+let readInFlight = false;
+let readCancelled = false;
+
 async function readUidOnce(): Promise<string | null> {
   await ensureNfcStarted();
+  readCancelled = false;
+  readInFlight = true;
   try {
     // NfcA covers the large majority of Android cards (NTAG, MIFARE,
     // most access cards). Add NfcB/NfcF/NfcV fallbacks later if you need
@@ -36,6 +44,7 @@ async function readUidOnce(): Promise<string | null> {
     const uid = tag?.id ?? null;
     return uid ? uid.toLowerCase() : null;
   } finally {
+    readInFlight = false;
     try {
       await NfcManager.cancelTechnologyRequest();
     } catch {
@@ -44,15 +53,28 @@ async function readUidOnce(): Promise<string | null> {
   }
 }
 
-export type ReadResult = { uid: string } | { error: string };
+/** Abort a scan the user started. Safe to call when no read is in flight. */
+export async function cancelCardRead(): Promise<void> {
+  if (!readInFlight) return;
+  readCancelled = true;
+  try {
+    await NfcManager.cancelTechnologyRequest();
+  } catch {
+    /* no-op */
+  }
+}
+
+export type ReadResult = { uid: string } | { error: string; cancelled?: boolean };
 
 /** Single read — used to detect a tap during an active session. */
 export async function readCardUid(): Promise<ReadResult> {
   try {
     const uid = await readUidOnce();
+    if (readCancelled) return { error: "Scan cancelled.", cancelled: true };
     if (!uid) return { error: "Couldn't read that card. Try again." };
     return { uid };
   } catch (e: any) {
+    if (readCancelled) return { error: "Scan cancelled.", cancelled: true };
     return { error: e?.message ?? "NFC read failed." };
   }
 }

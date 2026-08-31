@@ -15,6 +15,7 @@ const KEYS = {
   blocklist: "blocklist", // array of package names
   sessions: "sessions", // array of completed session records
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
+  emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
 } as const;
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -112,4 +113,70 @@ export async function getTodayStats(): Promise<TodayStats> {
     count: today.length,
     streak,
   };
+}
+
+// --- Emergency unlocks -----------------------------------------------------
+// If the card is lost, broken, or simply not to hand, the user must still be
+// able to get back into their phone. The escape hatch is deliberately slow (a
+// long press-and-hold) and deliberately scarce (a few per calendar month) so it
+// stays an emergency rather than a second unlock button.
+//
+// The allowance is keyed to the local calendar month and refills on the 1st:
+// spend all three in August and the count is back to three on 1 September.
+// Nothing here defends against a user moving the device clock; that is a
+// trade-off we accept for staying fully on-device with no accounts.
+
+export const EMERGENCY_UNLOCKS_PER_MONTH = 3;
+export const EMERGENCY_HOLD_SECONDS = 30;
+
+type EmergencyRecord = { m: string; n: number };
+
+export function monthKey(now = new Date()): string {
+  return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** When the allowance refills, e.g. "September 1". */
+export function emergencyResetLabel(now = new Date()): string {
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${MONTH_NAMES[next.getMonth()]} 1`;
+}
+
+/** Usage for the current month. A record from an older month reads as unused. */
+async function readEmergencyRecord(): Promise<EmergencyRecord> {
+  const month = monthKey();
+  const raw = await AsyncStorage.getItem(KEYS.emergencyUnlocks);
+  if (!raw) return { m: month, n: 0 };
+  try {
+    const parsed = JSON.parse(raw) as Partial<EmergencyRecord>;
+    if (parsed?.m !== month || typeof parsed.n !== "number" || !Number.isFinite(parsed.n)) {
+      return { m: month, n: 0 };
+    }
+    const used = Math.floor(parsed.n);
+    return { m: month, n: Math.min(EMERGENCY_UNLOCKS_PER_MONTH, Math.max(0, used)) };
+  } catch {
+    return { m: month, n: 0 };
+  }
+}
+
+export async function getEmergencyUnlocksLeft(): Promise<number> {
+  const record = await readEmergencyRecord();
+  return EMERGENCY_UNLOCKS_PER_MONTH - record.n;
+}
+
+/** Spend one unlock. Returns how many are left afterwards. */
+export async function consumeEmergencyUnlock(): Promise<number> {
+  const record = await readEmergencyRecord();
+  if (record.n >= EMERGENCY_UNLOCKS_PER_MONTH) {
+    throw new Error(
+      `You've used all ${EMERGENCY_UNLOCKS_PER_MONTH} emergency unlocks this month. They come back on ${emergencyResetLabel()}.`
+    );
+  }
+  const next: EmergencyRecord = { m: record.m, n: record.n + 1 };
+  await AsyncStorage.setItem(KEYS.emergencyUnlocks, JSON.stringify(next));
+  return EMERGENCY_UNLOCKS_PER_MONTH - next.n;
 }
