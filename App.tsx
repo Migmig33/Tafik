@@ -31,6 +31,7 @@ import {
   setActiveSessionStartedAt,
   setWelcomeSeen,
 } from "./src/store";
+import { PremiumProvider } from "./src/premium";
 import { ThemeProvider, useTheme } from "./src/theme";
 
 function AppContent() {
@@ -196,9 +197,11 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <ErrorBoundary>
-        <AppContent />
-      </ErrorBoundary>
+      <PremiumProvider>
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
+      </PremiumProvider>
     </ThemeProvider>
   );
 }

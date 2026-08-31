@@ -17,6 +17,7 @@ const KEYS = {
   sessions: "sessions", // array of completed session records
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
+  premium: "premium", // "1" once the one-time unlock is owned
 } as const;
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -195,4 +196,38 @@ export async function getWelcomeSeen(): Promise<boolean> {
 
 export async function setWelcomeSeen(seen: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.welcomeSeen, seen ? "1" : "0");
+}
+
+// --- Premium ---------------------------------------------------------------
+// TapIn is freemium, and the free tier is a whole product: unlimited apps,
+// unlimited sessions, the card, the timer, the streak, and a way out if the
+// card is lost. Premium buys depth — the longer view of your screen time, your
+// own words on the shield, and more than one card — never the ability to block.
+//
+// This is the single source of truth for the entitlement. Every gated screen
+// reads it through usePremium() (src/premium.tsx) so there is exactly one place
+// to change when billing becomes real.
+
+/**
+ * Forces the entitlement regardless of what is stored, so gated UI can be built
+ * and reviewed before any billing exists. `null` means "use the real value".
+ *
+ * TODO(billing, step 6): set this to `null` and make getIsPremium() ask
+ * RevenueCat for the non-consumable entitlement, caching the answer here so a
+ * launch with no network still knows what the user owns.
+ */
+const PREMIUM_OVERRIDE: boolean | null = true;
+
+/** Whether the one-time Premium unlock is owned. */
+export async function getIsPremium(): Promise<boolean> {
+  if (PREMIUM_OVERRIDE !== null) return PREMIUM_OVERRIDE;
+  return (await AsyncStorage.getItem(KEYS.premium)) === "1";
+}
+
+/**
+ * Record the entitlement locally. Called after a purchase or a restore — never
+ * from the UI as a toggle, since owning Premium is the store's fact, not ours.
+ */
+export async function setIsPremium(premium: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.premium, premium ? "1" : "0");
 }
