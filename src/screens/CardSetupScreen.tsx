@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Lock from "lucide-react-native/icons/lock";
@@ -35,7 +35,7 @@ export default function CardSetupScreen({
 }: {
   nav: Nav;
   active: boolean;
-  onUnlock: () => void;
+  onUnlock?: () => void;
 }) {
   const { colors } = useTheme();
   const { isPremium, ready: premiumReady } = usePremium();
@@ -64,7 +64,7 @@ export default function CardSetupScreen({
 
   const beginAdd = () => {
     if (cards.length >= 1 && !isPremium) {
-      onUnlock();
+      onUnlock?.();
       return;
     }
     setFirstUid(null);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";

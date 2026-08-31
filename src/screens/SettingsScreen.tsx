@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Bell from "lucide-react-native/icons/bell";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -37,7 +37,7 @@ export default function SettingsScreen({
   onUnlock,
   onManageCards,
 }: {
-  onUnlock: () => void;
+  onUnlock?: () => void;
   onManageCards: () => void;
 }) {
   const { colors, mode, setMode } = useTheme();

@@ -14,8 +14,9 @@ records its architecture and constraints for future maintenance.
    The overlay is the shield and is drawn directly by `ForegroundBlockService.kt`.
 3. **Own session state.** Start/stop shielding on command from JS, and keep the
    persistent foreground notification alive while a session runs.
-4. **Read the blocklist + card UID without JS awake.** Mirror them into
-   `SharedPreferences` from JS (via this module) so the service reads them directly.
+4. **Read blocking state without JS awake.** Mirror the blocklist, appearance,
+   and shield message into `SharedPreferences` so the service can enforce a live
+   session after the React Native runtime sleeps. NFC reads happen in the app UI.
 
 ## Do NOT use AccessibilityService
 
@@ -24,51 +25,19 @@ Use UsageStats + overlay. As of the Jan 2026 Play policy enforcement and Android
 Play rejection and being disabled on-device. This is the single biggest thing
 that gets blocker apps removed.
 
-## JS ↔ native interface to expose (Expo Modules API)
+## JS ↔ native interface (Expo Modules API)
 
 ```ts
-// src/blocking.ts (create when the native side exists)
 startSession(blocklist: string[]): Promise<void>   // begin shielding
 endSession(): Promise<void>                          // stop shielding
 isSessionActive(): Promise<boolean>
 hasUsageAccess(): Promise<boolean>                   // for real onboarding checks
 hasOverlayPermission(): Promise<boolean>
-getInstalledApps(): Promise<{ name: string; pkg: string }[]>  // replace MOCK_APPS
+getInstalledApps(): Promise<{ name: string; pkg: string }[]>
 getInstalledAppsWithIcons(): Promise<string>                   // names, packages, icon data URIs
 getScreenTimeToday(): Promise<number>                          // foreground app time in ms
 getAppScreenTimeToday(): Promise<string>                        // per-app foreground time JSON
-getScreenTimeInsights(): Promise<string>                        // seven daily totals + apps JSON
+getScreenTimeInsights(): Promise<string>                        // fourteen daily totals + apps JSON
+setAppearanceMode(mode: "system" | "light" | "dark"): Promise<void>
+setShieldMessage(message: string): Promise<void>
 ```
-
-Wire `getInstalledApps()` into `BlocklistScreen` (replace `MOCK_APPS`) and the
-permission checks into `OnboardingScreen` (replace the optimistic grant flip).
-
-## Create it with
-
-```
-npx create-expo-module@latest --local blocking
-```
-
-Then implement the service + overlay in the generated Kotlin. Skeleton to start:
-
-```kotlin
-// modules/blocking/android/.../BlockingModule.kt  (skeleton — fill in)
-class BlockingModule : Module() {
-  override fun definition() = ModuleDefinition {
-    Name("Blocking")
-    AsyncFunction("startSession") { blocklist: List<String> ->
-      val ctx = appContext.reactContext!!
-      Prefs.saveBlocklist(ctx, blocklist)
-      ForegroundBlockService.start(ctx)   // startForegroundService(...)
-    }
-    AsyncFunction("endSession") { ForegroundBlockService.stop(appContext.reactContext!!) }
-    AsyncFunction("hasUsageAccess") { UsageAccess.granted(appContext.reactContext!!) }
-    AsyncFunction("hasOverlayPermission") { Settings.canDrawOverlays(appContext.reactContext!!) }
-    AsyncFunction("getInstalledApps") { Apps.installed(appContext.reactContext!!) }
-  }
-}
-```
-
-`ForegroundBlockService`: the poll loop + overlay show/hide.
-`UsageAccess.granted`: check via `AppOpsManager` `OPSTR_GET_USAGE_STATS`.
-`Apps.installed`: `packageManager.getInstalledApplications`, filter launchable, non-system.

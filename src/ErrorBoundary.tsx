@@ -22,10 +22,6 @@ export default class ErrorBoundary extends React.Component<
     return { failed: true };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    if (__DEV__) console.error("[TapIn] render error:", error, info.componentStack);
-  }
-
   render() {
     if (!this.state.failed) return this.props.children;
     return <Fallback onRetry={() => this.setState({ failed: false })} />;

@@ -1,9 +1,8 @@
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// whoosh.wav is whoosh.mp3 with the dead air trimmed off both ends, then
-// compressed and normalized to -1 dBFS: about 11 dB louder to the ear. The mp3
-// is kept beside it as the untouched source, and is not bundled.
+// The clip has its dead air trimmed, then is compressed and normalized to
+// -1 dBFS so the short launch cue stays audible without delaying navigation.
 const WHOOSH = require("./assets/whoosh.wav");
 
 /** Length of the bundled clip. Used until the player reports the real value. */
@@ -54,9 +53,8 @@ export function useWhoosh(): {
         .finally(() => {
           try {
             player.play();
-          } catch (error) {
-            // A silent launch is not worth a log line in a shipped build.
-            if (__DEV__) console.warn("[TapIn] whoosh playback failed:", error);
+          } catch {
+            // Sound is cosmetic, so playback failure must not interrupt launch.
           }
         });
     };

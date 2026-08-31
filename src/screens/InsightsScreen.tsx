@@ -44,7 +44,7 @@ function combineApps(days: ScreenTimeDay[]): AppScreenTime[] {
   return [...combined.values()].sort((a, b) => b.seconds - a.seconds);
 }
 
-export default function InsightsScreen({ onUnlock }: { onUnlock: () => void }) {
+export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) {
   const { colors } = useTheme();
   // Free sees how long today and yesterday were. Premium sees the shape of it:
   // which apps, the week, and whether the week is going the right way.
@@ -359,7 +359,7 @@ function PremiumLock({
 }: {
   title: string;
   blurb: string;
-  onUnlock: () => void;
+  onUnlock?: () => void;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();

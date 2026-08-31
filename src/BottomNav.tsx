@@ -1,4 +1,3 @@
-import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";

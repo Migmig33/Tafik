@@ -1,8 +1,5 @@
 {
-  "platforms": ["apple", "android", "web"],
-  "apple": {
-    "modules": ["BlockingModule"]
-  },
+  "platforms": ["android"],
   "android": {
     "modules": ["expo.modules.blocking.BlockingModule"]
   }

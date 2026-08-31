@@ -280,22 +280,14 @@ export async function setWelcomeSeen(seen: boolean): Promise<void> {
 }
 
 // --- Premium ---------------------------------------------------------------
-// TapIn is freemium, and the free tier is a whole product: unlimited apps,
-// unlimited sessions, the card, the timer, the streak, and a way out if the
-// card is lost. Premium buys depth — the longer view of your screen time, your
-// own words on the shield, and more than one card — never the ability to block.
-//
-// This is the single source of truth for the entitlement. Every gated screen
-// reads it through usePremium() (src/premium.tsx) so there is exactly one place
-// to change when billing becomes real.
+// The entitlement plumbing remains the single source of truth so a future paid
+// feature can be switched on without rebuilding every gated surface.
 
 /**
- * Forces the entitlement regardless of what is stored, so gated UI can be built
- * and reviewed before any billing exists. `null` means "use the real value".
- *
- * TODO(billing, step 6): set this to `null` and make getIsPremium() ask
- * RevenueCat for the non-consumable entitlement, caching the answer here so a
- * launch with no network still knows what the user owns.
+ * v2 ships fully unlocked because insights history, custom shield copy, and
+ * multiple cards do not justify a paid tier on their own. The gates stay
+ * intentionally dormant behind this override; billing is deferred until a
+ * substantial paid feature, such as user-requested strict mode, exists.
  */
 const PREMIUM_OVERRIDE: boolean | null = true;
 
