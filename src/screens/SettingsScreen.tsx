@@ -3,6 +3,8 @@ import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "reac
 import Bell from "lucide-react-native/icons/bell";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Layers from "lucide-react-native/icons/layers";
+import Lock from "lucide-react-native/icons/lock";
+import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
 import Monitor from "lucide-react-native/icons/monitor";
 import Moon from "lucide-react-native/icons/moon";
 import ScanLine from "lucide-react-native/icons/scan-line";
@@ -12,21 +14,41 @@ import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
 import { hasOverlayPermission, hasUsageAccess } from "../blocking";
 import { Body, Screen, Title } from "../components";
+import { usePremium } from "../premium";
 import {
   EMERGENCY_HOLD_SECONDS,
   EMERGENCY_UNLOCKS_PER_MONTH,
   emergencyResetLabel,
   getEmergencyUnlocksLeft,
+  getShieldMessage,
+  setShieldMessage,
+  SHIELD_MESSAGE_MAX_LENGTH,
 } from "../store";
 import { radius, space, ThemeMode, useTheme } from "../theme";
-import { Text } from "../typography";
+import { Text, TextInput } from "../typography";
+
+/** What the shield says when the user has not written their own line. */
+const DEFAULT_SHIELD_MESSAGE =
+  "This app is locked by TapIn while your focus session is active.";
 
 type AccessState = { usage: boolean; overlay: boolean };
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ onUnlock }: { onUnlock: () => void }) {
   const { colors, mode, setMode } = useTheme();
+  const { isPremium, ready: premiumReady } = usePremium();
   const [access, setAccess] = useState<AccessState>({ usage: false, overlay: false });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
+  const [shieldDraft, setShieldDraft] = useState("");
+
+  useEffect(() => {
+    getShieldMessage().then(setShieldDraft);
+  }, []);
+
+  // Saved on the way out of the field rather than on every keystroke: each save
+  // crosses the native bridge, and the shield only needs the finished sentence.
+  const commitShieldMessage = () => {
+    setShieldMessage(shieldDraft).then(setShieldDraft);
+  };
 
   const refresh = useCallback(async () => {
     const [usage, overlay, left] = await Promise.all([
@@ -120,6 +142,68 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SHIELD MESSAGE</Text>
+        {!premiumReady ? null : isPremium ? (
+          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.shieldBody}>
+              <View style={styles.shieldHeader}>
+                <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+                  <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+                    Your words on the shield
+                  </Text>
+                  <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                    Shown when a locked app is opened. Leave it empty for TapIn&apos;s own line.
+                  </Text>
+                </View>
+              </View>
+
+              <TextInput
+                value={shieldDraft}
+                onChangeText={setShieldDraft}
+                onBlur={commitShieldMessage}
+                onSubmitEditing={commitShieldMessage}
+                returnKeyType="done"
+                multiline
+                maxLength={SHIELD_MESSAGE_MAX_LENGTH}
+                placeholder={DEFAULT_SHIELD_MESSAGE}
+                placeholderTextColor={colors.textDim}
+                style={[
+                  styles.shieldInput,
+                  { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border },
+                ]}
+              />
+              <Text style={{ color: colors.textDim, fontSize: 11, textAlign: "right" }}>
+                {shieldDraft.length} / {SHIELD_MESSAGE_MAX_LENGTH}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onUnlock}
+            style={({ pressed }) => [
+              styles.systemCard,
+              styles.row,
+              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.68 : 1 },
+            ]}
+          >
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+                Your words on the shield
+              </Text>
+              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                Write what a locked app should say back to you. Premium.
+              </Text>
+            </View>
+            <Lock size={17} color={colors.textDim} strokeWidth={2.2} />
+          </Pressable>
+        )}
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SYSTEM ACCESS</Text>
         <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -217,5 +301,24 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  shieldBody: {
+    gap: space(1.25),
+    padding: space(1.5),
+  },
+  shieldHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1.25),
+  },
+  shieldInput: {
+    minHeight: 76,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: "top",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.input,
+    paddingHorizontal: space(1.5),
+    paddingVertical: space(1.25),
   },
 });

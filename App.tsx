@@ -6,7 +6,12 @@ import { Poppins_700Bold } from "@expo-google-fonts/poppins/700Bold";
 import { useFonts } from "expo-font";
 import React, { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
-import { endBlockingSession, isBlockingSessionActive, startBlockingSession } from "./src/blocking";
+import {
+  endBlockingSession,
+  isBlockingSessionActive,
+  startBlockingSession,
+  syncShieldMessage,
+} from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
 import { ScreenName } from "./src/nav";
@@ -26,16 +31,18 @@ import {
   getActiveSessionStartedAt,
   getBlocklist,
   getOnboardingDone,
+  getShieldMessage,
   getWelcomeSeen,
   recordSession,
   setActiveSessionStartedAt,
   setWelcomeSeen,
 } from "./src/store";
-import { PremiumProvider } from "./src/premium";
+import { PremiumProvider, usePremium } from "./src/premium";
 import { ThemeProvider, useTheme } from "./src/theme";
 
 function AppContent() {
   const { colors, isDark } = useTheme();
+  const { isPremium, ready: premiumReady } = usePremium();
   const [ready, setReady] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
   // Assume seen until storage says otherwise, so a returning user never gets a
@@ -69,6 +76,14 @@ function AppContent() {
       setReady(true);
     })();
   }, []);
+
+  // Keep SharedPreferences in step with what the user is entitled to, not just
+  // with what happens to be stored: a message written on Premium must stop
+  // reaching the shield if the entitlement ever goes away.
+  useEffect(() => {
+    if (!premiumReady) return;
+    getShieldMessage().then((message) => syncShieldMessage(isPremium ? message : ""));
+  }, [isPremium, premiumReady]);
 
   // Refresh block count whenever we land back on home.
   useEffect(() => {
@@ -179,7 +194,7 @@ function AppContent() {
         )}
         {screen === "blocklist" && <BlocklistScreen />}
         {screen === "insights" && <InsightsScreen onUnlock={showPremium} />}
-        {screen === "settings" && <SettingsScreen />}
+        {screen === "settings" && <SettingsScreen onUnlock={showPremium} />}
         {screen === "cardSetup" && <CardSetupScreen nav={setScreen} />}
         {screen === "emergency" && (
           <EmergencyScreen nav={setScreen} active={active} onUnlock={emergencyUnlock} />

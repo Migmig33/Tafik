@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { syncShieldMessage } from "./blocking";
 
 // 100% on-device. No backend, no accounts. These are the only things the app
 // needs to remember between launches.
@@ -18,6 +19,7 @@ const KEYS = {
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
   premium: "premium", // "1" once the one-time unlock is owned
+  shieldMessage: "shieldMessage", // the user's own words on the block overlay
 } as const;
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -230,4 +232,34 @@ export async function getIsPremium(): Promise<boolean> {
  */
 export async function setIsPremium(premium: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.premium, premium ? "1" : "0");
+}
+
+// --- Shield message --------------------------------------------------------
+// What the block overlay says when it catches you. TapIn's own line is fine,
+// but "you said you'd call your mum tonight" is the one that actually works,
+// so Premium lets the user write it themselves.
+//
+// This is the JS-side source of truth; setShieldMessage mirrors it into
+// SharedPreferences (see syncShieldMessage) because the service that draws the
+// shield runs with the JS runtime asleep.
+
+/**
+ * Kept short on purpose. The shield has to stay readable at a glance and the
+ * unlock button has to stay on screen on a small phone; a paragraph would cost
+ * both. Mirrored in BlockingPreferences.SHIELD_MESSAGE_MAX_LENGTH.
+ */
+export const SHIELD_MESSAGE_MAX_LENGTH = 60;
+
+export async function getShieldMessage(): Promise<string> {
+  return (await AsyncStorage.getItem(KEYS.shieldMessage)) ?? "";
+}
+
+/** Store the message and push it to the service. Blank restores the default. */
+export async function setShieldMessage(message: string): Promise<string> {
+  // Collapse the whitespace: the shield draws one line of copy, and a stray
+  // newline from the multiline field would break it across the card.
+  const trimmed = message.replace(/\s+/g, " ").trim().slice(0, SHIELD_MESSAGE_MAX_LENGTH);
+  await AsyncStorage.setItem(KEYS.shieldMessage, trimmed);
+  await syncShieldMessage(trimmed);
+  return trimmed;
 }

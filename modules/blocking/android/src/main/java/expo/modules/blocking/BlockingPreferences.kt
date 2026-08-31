@@ -8,6 +8,11 @@ internal object BlockingPreferences {
   private const val ACTIVE = "active"
   private const val BLOCKLIST = "blocklist"
   private const val APPEARANCE = "appearance"
+  private const val SHIELD_MESSAGE = "shieldMessage"
+
+  // Long enough for a sentence worth reading on a shield, short enough that it
+  // cannot push the unlock button off a small screen.
+  const val SHIELD_MESSAGE_MAX_LENGTH = 60
 
   private fun prefs(context: Context) =
     context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -31,6 +36,16 @@ internal object BlockingPreferences {
   fun setAppearanceMode(context: Context, mode: String) {
     prefs(context).edit().putString(APPEARANCE, mode).apply()
   }
+
+  /** The user's own words for the shield. Blank means "use TapIn's line". */
+  fun setShieldMessage(context: Context, message: String) {
+    prefs(context).edit()
+      .putString(SHIELD_MESSAGE, message.trim().take(SHIELD_MESSAGE_MAX_LENGTH))
+      .apply()
+  }
+
+  fun shieldMessage(context: Context): String =
+    prefs(context).getString(SHIELD_MESSAGE, "").orEmpty()
 
   fun isDarkAppearance(context: Context): Boolean {
     return when (prefs(context).getString(APPEARANCE, "system")) {

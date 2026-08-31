@@ -253,8 +253,13 @@ class ForegroundBlockService : Service() {
       LinearLayout.LayoutParams.WRAP_CONTENT
     ).apply { topMargin = dp(24) })
 
+    // The user's own reason for locking this app carries further than ours,
+    // so it takes this line when they have written one.
+    val shieldMessage = BlockingPreferences.shieldMessage(this).ifBlank {
+      "This app is locked by TapIn while your focus session is active."
+    }
     card.addView(makeText(
-      "This app is locked by TapIn while your focus session is active.",
+      shieldMessage,
       15f,
       palette.textDim
     ).apply {
