@@ -67,6 +67,15 @@ export default function HomeScreen({
 
   const beginScan = async (mode: "start" | "end") => {
     if (scanning) return;
+    // Catch both dead ends before arming the reader. Finding out that there is
+    // nothing to lock only after tapping the card is a wasted trip.
+    if (mode === "start" && blockCount === 0) {
+      Alert.alert("Nothing to lock", "Choose at least one app to lock first.", [
+        { text: "Not now", style: "cancel" },
+        { text: "Choose apps", onPress: () => nav("blocklist") },
+      ]);
+      return;
+    }
     const stored = await getCardUid();
     if (!stored) {
       nav("cardSetup");
@@ -81,7 +90,7 @@ export default function HomeScreen({
       return;
     }
     if (r.uid !== stored) {
-      Alert.alert("Different card", "That isn't your registered focus card.");
+      Alert.alert("Different card", "That isn't the card registered with TapIn.");
       return;
     }
     try {

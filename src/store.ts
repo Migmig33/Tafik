@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEYS = {
   onboardingDone: "onboardingDone",
+  welcomeSeen: "welcomeSeen", // the one-time first-launch intro copy
   cardUid: "cardUid",
   blocklist: "blocklist", // array of package names
   sessions: "sessions", // array of completed session records
@@ -179,4 +180,19 @@ export async function consumeEmergencyUnlock(): Promise<number> {
   const next: EmergencyRecord = { m: record.m, n: record.n + 1 };
   await AsyncStorage.setItem(KEYS.emergencyUnlocks, JSON.stringify(next));
   return EMERGENCY_UNLOCKS_PER_MONTH - next.n;
+}
+
+// --- First launch ----------------------------------------------------------
+
+/**
+ * Whether the one-time welcome sequence has been seen. Separate from
+ * onboardingDone so quitting midway through the permission screens doesn't
+ * replay the whole intro copy on the next launch.
+ */
+export async function getWelcomeSeen(): Promise<boolean> {
+  return (await AsyncStorage.getItem(KEYS.welcomeSeen)) === "1";
+}
+
+export async function setWelcomeSeen(seen: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.welcomeSeen, seen ? "1" : "0");
 }

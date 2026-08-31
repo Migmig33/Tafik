@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Pressable,
   StyleSheet,
   View,
@@ -181,6 +182,30 @@ export function TapRipple({ active = true }: { active?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  // Sized to the letter itself: the glyph is 22.0% x 38.1% of the square
+  // artwork, so a 248px image puts the t at ~54.5 x 94.5px. overflow hides the
+  // transparent margin that would otherwise pad the layout around it.
+  markBox: {
+    width: 56,
+    height: 96,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  glyph: {
+    width: 248,
+    height: 248,
+  },
+  brandTitle: {
+    fontSize: 30,
+    fontWeight: "600",
+    letterSpacing: -0.6,
+  },
+  brandTagline: {
+    marginTop: space(0.75),
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
   ring: {
     position: "absolute",
     width: 160,
@@ -306,5 +331,96 @@ export function HoldButton({
         {holding ? `Keep holding… ${left}s` : label}
       </Text>
     </Pressable>
+  );
+}
+
+/**
+ * The animated brand lockup: the t mark scales up, then the wordmark and
+ * tagline rise under it. Shared by the first-run welcome and the ordinary
+ * launch intro so the two can never drift apart. `onDone` fires once the whole
+ * sequence has settled.
+ */
+export function BrandLockup({
+  durationMs,
+  onDone,
+}: {
+  /** Total length of the whole lockup, matched to the whoosh clip. */
+  durationMs: number;
+  onDone?: () => void;
+}) {
+  const { colors } = useTheme();
+  const mark = useRef(new Animated.Value(0)).current;
+  const copy = useRef(new Animated.Value(0)).current;
+  // Held in a ref so a caller re-rendering with a new callback can't restart
+  // the animation partway through.
+  const done = useRef(onDone);
+  done.current = onDone;
+  // Captured once: the duration is whatever it was when the mark appeared, so
+  // a late-arriving value cannot restart the animation midway.
+  const total = useRef(durationMs);
+
+  useEffect(() => {
+    // The mark and the wordmark split the clip 60/40, so the lockup lands
+    // exactly as the sound ends. A shorter clip means a faster animation.
+    const animation = Animated.sequence([
+      Animated.timing(mark, {
+        toValue: 1,
+        duration: Math.round(total.current * 0.6),
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(copy, {
+        toValue: 1,
+        duration: Math.round(total.current * 0.4),
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start(({ finished }) => {
+      if (finished) done.current?.();
+    });
+    return () => animation.stop();
+  }, [copy, mark]);
+
+  return (
+    <>
+      <Animated.View
+        style={{
+          alignItems: "center",
+          opacity: mark,
+          transform: [
+            { scale: mark.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) },
+          ],
+        }}
+      >
+        {/* The launcher icon itself, tinted to the accent so it reads in both
+            themes. Using the asset keeps the intro and the home-screen icon
+            from drifting apart the next time the artwork changes. The box crops
+            the artwork's safe-zone padding so the letter sits on its own bounds
+            and the spacing below stays honest. */}
+        <View style={styles.markBox}>
+          <Image
+            source={require("./assets/adaptive-icon.png")}
+            style={[styles.glyph, { tintColor: colors.accent }]}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        </View>
+      </Animated.View>
+
+      <Animated.View
+        style={{
+          alignItems: "center",
+          marginTop: space(4),
+          opacity: copy,
+          transform: [
+            { translateY: copy.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+          ],
+        }}
+      >
+        <Text style={[styles.brandTitle, { color: colors.text }]}>TapIn</Text>
+        <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap and lock in</Text>
+      </Animated.View>
+    </>
   );
 }

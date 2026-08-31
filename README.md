@@ -23,7 +23,7 @@ the native blocking module.
 
 ## Run it on your phone today
 
-Requires: Node 18+, a **physical Android phone with NFC** (Expo Go will NOT work —
+Requires: Node 22.13+, a **physical Android phone with NFC** (Expo Go will NOT work —
 NFC needs a dev build), USB debugging on, and Android Studio / platform tools.
 
 ```bash
@@ -35,9 +35,9 @@ npx expo run:android   # builds a dev client and installs it on your device
 Then tap your card on the Card setup screen to register it, pick some apps on the
 Blocklist, grant the requested Android permissions, and start a focus session.
 
-## Before you rename / ship
+## Before you ship
 
-- Change `name`, `slug`, `android.package` in `app.json` (currently placeholders).
+- Confirm `com.kupdevs.tapin` is the permanent Android application ID before the first Play upload.
 - Fill the Play Console **Data Safety** form as "no data collected / stays on device".
 - Justify the Usage Access + overlay permissions in your store listing.
 - Set your one-time price in Play Console (no billing SDK needed for paid-up-front).

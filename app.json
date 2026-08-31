@@ -1,15 +1,14 @@
 {
   "expo": {
     "name": "TapIn",
-    "slug": "focus-card",
-    "scheme": "focuscard",
-    "version": "0.1.0",
+    "slug": "tapin",
+    "scheme": "tapin",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "icon": "./src/assets/icon.png",
     "android": {
-      "package": "com.yourcompany.focuscard",
+      "package": "com.kupdevs.tapin",
       "permissions": [
         "android.permission.NFC",
         "android.permission.PACKAGE_USAGE_STATS",
@@ -17,7 +16,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.QUERY_ALL_PACKAGES"
+        "android.permission.QUERY_ALL_PACKAGES",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
@@ -31,13 +31,23 @@
           "nfcPermission": "TapIn uses your card to start and end a focus session."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset",
+      "expo-build-properties",
+      "expo-status-bar"
     ],
+    "owner": "tantansahur",
     "extra": {
       "eas": {
-        "projectId": "e712bc81-5ef2-41b6-8664-cfd3b4e1ad42"
+        "projectId": "ff4cf819-aea4-447c-a228-f8f3af2ebce2"
       }
-    },
-    "owner": "tantansahur"
+    }
   }
 }

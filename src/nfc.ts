@@ -16,10 +16,16 @@ export async function ensureNfcStarted(): Promise<void> {
   started = true;
 }
 
-export async function isNfcSupported(): Promise<boolean> {
+/**
+ * Whether a card tap can actually work right now: the hardware exists and the
+ * user has NFC switched on. Both matter — a phone with NFC turned off looks
+ * identical to one without it until you try to read a card.
+ */
+export async function isNfcReady(): Promise<boolean> {
   try {
     await ensureNfcStarted();
-    return await NfcManager.isSupported();
+    if (!(await NfcManager.isSupported())) return false;
+    return await NfcManager.isEnabled();
   } catch {
     return false;
   }
@@ -78,5 +84,3 @@ export async function readCardUid(): Promise<ReadResult> {
     return { error: e?.message ?? "NFC read failed." };
   }
 }
-
-export type RegisterStep = "first" | "confirm";

@@ -7,6 +7,7 @@ import { useFonts } from "expo-font";
 import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 import { endBlockingSession, isBlockingSessionActive, startBlockingSession } from "./src/blocking";
+import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
 import { ScreenName } from "./src/nav";
 import BlocklistScreen from "./src/screens/BlocklistScreen";
@@ -17,6 +18,7 @@ import IntroScreen from "./src/screens/IntroScreen";
 import InsightsScreen from "./src/screens/InsightsScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import WelcomeScreen from "./src/screens/WelcomeScreen";
 import {
   clearActiveSessionStartedAt,
   consumeEmergencyUnlock,
@@ -24,15 +26,20 @@ import {
   getActiveSessionStartedAt,
   getBlocklist,
   getOnboardingDone,
+  getWelcomeSeen,
   recordSession,
   setActiveSessionStartedAt,
+  setWelcomeSeen,
 } from "./src/store";
 import { ThemeProvider, useTheme } from "./src/theme";
 
 function AppContent() {
-  const { isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const [ready, setReady] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
+  // Assume seen until storage says otherwise, so a returning user never gets a
+  // flash of the first-run copy while the read is in flight.
+  const [welcomeSeen, setWelcomeSeenState] = useState(true);
   const [screen, setScreen] = useState<ScreenName>("onboarding");
 
   // The native foreground service owns enforcement; JS reflects its session state.
@@ -42,13 +49,15 @@ function AppContent() {
 
   useEffect(() => {
     (async () => {
-      const [done, list, sessionActive, savedStartedAt] = await Promise.all([
+      const [done, list, sessionActive, savedStartedAt, seenWelcome] = await Promise.all([
         getOnboardingDone(),
         getBlocklist(),
         isBlockingSessionActive(),
         getActiveSessionStartedAt(),
+        getWelcomeSeen(),
       ]);
       setBlockCount(list.length);
+      setWelcomeSeenState(seenWelcome);
       setActive(sessionActive);
       if (sessionActive) {
         setStartedAt(savedStartedAt ?? Date.now());
@@ -65,9 +74,37 @@ function AppContent() {
     if (screen === "home") getBlocklist().then((l) => setBlockCount(l.length));
   }, [screen]);
 
-  // Keep the launch animation visible for its full duration and while stored
-  // app state loads. This runs on every fresh app launch.
-  if (!ready || !introFinished) {
+  // Hold on a bare background until storage answers, so we know which of the
+  // two openings to play. The read is a few milliseconds; starting the intro
+  // first would mean playing the whoosh twice on a first launch.
+  if (!ready) {
+    return (
+      <>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <View style={{ flex: 1, backgroundColor: colors.bg }} />
+      </>
+    );
+  }
+
+  // First launch ever: the case for the app, ending on the same lockup the
+  // ordinary intro shows, then a button. No timer — the user leaves when ready.
+  if (!welcomeSeen) {
+    const finishWelcome = async () => {
+      await setWelcomeSeen(true);
+      setWelcomeSeenState(true);
+      // They just watched the lockup animate in; do not replay it.
+      setIntroFinished(true);
+    };
+    return (
+      <>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <WelcomeScreen onGetStarted={finishWelcome} />
+      </>
+    );
+  }
+
+  // Keep the launch animation visible for its full duration. Every later start.
+  if (!introFinished) {
     return (
       <>
         <StatusBar style={isDark ? "light" : "dark"} />
@@ -159,7 +196,9 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <AppContent />
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

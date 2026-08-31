@@ -23,7 +23,9 @@ const native = requireOptionalNativeModule<BlockingNativeModule>("Blocking");
 
 function requireBlockingModule(): BlockingNativeModule {
   if (!native) {
-    throw new Error("TapIn's blocking engine is not in this build. Rebuild the Android app, then try again.");
+    throw new Error(
+      "TapIn's blocker isn't available on this device. Please update TapIn to the latest version."
+    );
   }
   return native;
 }
@@ -53,20 +55,14 @@ export async function hasOverlayPermission(): Promise<boolean> {
   return native ? native.hasOverlayPermission() : false;
 }
 
-/** Device-wide foreground app time today, in seconds. */
-export async function getDeviceScreenTimeToday(): Promise<number | null> {
-  if (!native || !(await native.hasUsageAccess())) return null;
-  return Math.round((await native.getScreenTimeToday()) / 1000);
-}
-
 export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getAppScreenTimeToday !== "function") {
-    throw new Error("Rebuild TapIn to install the screen-time details update.");
+    throw new Error("Screen-time details aren't available yet. Please update TapIn to the latest version.");
   }
   const raw = await native.getAppScreenTimeToday();
   const apps = JSON.parse(raw) as unknown;
-  if (!Array.isArray(apps)) throw new Error("Android returned invalid app usage data.");
+  if (!Array.isArray(apps)) throw new Error("Couldn't read your screen time. Please try again.");
 
   return apps
     .filter(
@@ -87,12 +83,12 @@ export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
 export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getScreenTimeInsights !== "function") {
-    throw new Error("Rebuild TapIn to install screen-time insights.");
+    throw new Error("Screen-time insights aren't available yet. Please update TapIn to the latest version.");
   }
   const parsed = JSON.parse(await native.getScreenTimeInsights()) as {
     days?: { date?: unknown; milliseconds?: unknown; apps?: unknown }[];
   };
-  if (!Array.isArray(parsed.days)) throw new Error("Android returned invalid insights data.");
+  if (!Array.isArray(parsed.days)) throw new Error("Couldn't read your screen time. Please try again.");
 
   return parsed.days.map((day) => {
     const rawApps = Array.isArray(day.apps) ? day.apps : [];
@@ -121,10 +117,10 @@ export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
 export async function getInstalledApps(): Promise<InstalledApp[]> {
   const module = requireBlockingModule();
   if (typeof module.getInstalledAppsWithIcons !== "function") {
-    throw new Error("Rebuild TapIn to install real app icon support.");
+    throw new Error("The app list isn't available yet. Please update TapIn to the latest version.");
   }
   const parsed = JSON.parse(await module.getInstalledAppsWithIcons()) as unknown;
-  if (!Array.isArray(parsed)) throw new Error("Android returned invalid installed-app data.");
+  if (!Array.isArray(parsed)) throw new Error("Couldn't read your installed apps. Please try again.");
 
   return parsed.filter(
     (app): app is InstalledApp =>

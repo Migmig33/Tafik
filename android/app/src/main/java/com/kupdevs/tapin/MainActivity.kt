@@ -1,4 +1,4 @@
-package com.yourcompany.focuscard
+package com.kupdevs.tapin
 
 import android.os.Build
 import android.os.Bundle

@@ -1,71 +1,127 @@
-import React, { useState } from "react";
-import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  AppState,
+  Linking,
+  PermissionsAndroid,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { hasOverlayPermission, hasUsageAccess } from "../blocking";
 import { Body, PrimaryButton, Screen, Title } from "../components";
 import { Nav } from "../nav";
+import { isNfcReady } from "../nfc";
 import { setOnboardingDone } from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
-// The four permissions the app cannot function without. On a real device these
-// buttons should deep-link into the correct system settings screen and then
-// verify the grant. Deep links below are the standard Android setting intents;
-// wire the verification checks in your native module.
-const PERMS = [
+// POST_NOTIFICATIONS is a runtime permission only on Android 13 (API 33) and
+// up. Below that it is granted at install time, so there is nothing to ask for.
+const NEEDS_NOTIFICATION_PROMPT =
+  Platform.OS === "android" && Number(Platform.Version) >= 33;
+
+async function hasNotificationPermission(): Promise<boolean> {
+  if (!NEEDS_NOTIFICATION_PROMPT) return true;
+  try {
+    return await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+    );
+  } catch {
+    return false;
+  }
+}
+
+type PermKey = "usage" | "overlay" | "notifications" | "nfc";
+
+const PERMS: {
+  key: PermKey;
+  name: string;
+  why: string;
+}[] = [
   {
     key: "usage",
     name: "Usage access",
-    why: "So we can tell which app you've opened.",
-    settings: "android.settings.USAGE_ACCESS_SETTINGS",
+    why: "So TapIn can tell which app is on screen.",
   },
   {
     key: "overlay",
     name: "Display over other apps",
-    why: "So we can cover blocked apps during a session.",
-    settings: "android.settings.action.MANAGE_OVERLAY_PERMISSION",
+    why: "So TapIn can cover blocked apps during a session.",
   },
   {
     key: "notifications",
     name: "Notifications",
     why: "To keep your session running in the background.",
-    settings: "android.settings.APP_NOTIFICATION_SETTINGS",
   },
   {
     key: "nfc",
     name: "NFC",
-    why: "To read your focus card when you tap it.",
-    settings: "android.settings.NFC_SETTINGS",
+    why: "To read your TapIn card when you tap it.",
   },
-] as const;
+];
 
 export default function OnboardingScreen({ nav }: { nav: Nav }) {
   const { colors } = useTheme();
-  const [granted, setGranted] = useState<Record<string, boolean>>({});
+  const [granted, setGranted] = useState<Record<PermKey, boolean>>({
+    usage: false,
+    overlay: false,
+    notifications: false,
+    nfc: false,
+  });
   const allGranted = PERMS.every((p) => granted[p.key]);
 
-  React.useEffect(() => {
-    const refresh = async () => {
-      const [usage, overlay] = await Promise.all([hasUsageAccess(), hasOverlayPermission()]);
-      setGranted((current) => ({ ...current, usage, overlay }));
-    };
+  // Every permission here is granted outside the app, so the only honest way to
+  // know is to re-read the real state each time the user comes back to us.
+  const refresh = useCallback(async () => {
+    const [usage, overlay, notifications, nfc] = await Promise.all([
+      hasUsageAccess(),
+      hasOverlayPermission(),
+      hasNotificationPermission(),
+      isNfcReady(),
+    ]);
+    setGranted({ usage, overlay, notifications, nfc });
+  }, []);
+
+  useEffect(() => {
     refresh();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") refresh();
     });
     return () => subscription.remove();
-  }, []);
+  }, [refresh]);
 
-  const grant = async (p: (typeof PERMS)[number]) => {
+  const grant = async (key: PermKey) => {
     try {
-      await Linking.sendIntent(p.settings);
+      if (key === "notifications") {
+        if (NEEDS_NOTIFICATION_PROMPT) {
+          const result = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+          // "Never ask again" means the dialog will not appear again, so send
+          // the user somewhere they can still say yes.
+          if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+            await Linking.openSettings();
+          }
+        }
+      } else if (key === "usage") {
+        await Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS");
+      } else if (key === "overlay") {
+        await Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION");
+      } else {
+        await Linking.sendIntent("android.settings.NFC_SETTINGS");
+      }
     } catch {
-      /* some intents need extras; refine per permission in the native layer */
+      // If the settings screen cannot be opened directly, the app's own
+      // settings page is always reachable and gets the user to the same place.
+      try {
+        await Linking.openSettings();
+      } catch {
+        /* nothing more we can do from here */
+      }
     }
-    // Usage and overlay access are verified when the app becomes active again.
-    // NFC/notification setup remains handled by their platform APIs at use time.
-    if (p.key !== "usage" && p.key !== "overlay") {
-      setGranted((g) => ({ ...g, [p.key]: true }));
-    }
+    // Never assume the grant succeeded: re-read it.
+    await refresh();
   };
 
   return (
@@ -78,7 +134,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
 
       <View style={{ gap: space(1.5) }}>
         {PERMS.map((p) => {
-          const ok = !!granted[p.key];
+          const ok = granted[p.key];
           return (
             <View
               key={p.key}
@@ -89,8 +145,10 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
                 <Text style={{ color: colors.textDim, fontSize: 13, marginTop: 2 }}>{p.why}</Text>
               </View>
               <Pressable
-                onPress={() => grant(p)}
+                onPress={() => grant(p.key)}
                 disabled={ok}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: ok }}
                 style={{
                   paddingHorizontal: space(2),
                   paddingVertical: space(1),
@@ -109,6 +167,13 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
       </View>
 
       <View style={{ flex: 1 }} />
+
+      {!allGranted && (
+        <>
+          <Body dim>Grant all four to continue. TapIn cannot block anything without them.</Body>
+          <View style={{ height: space(1.5) }} />
+        </>
+      )}
 
       <PrimaryButton
         label="Continue"
