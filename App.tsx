@@ -194,8 +194,12 @@ function AppContent() {
         )}
         {screen === "blocklist" && <BlocklistScreen />}
         {screen === "insights" && <InsightsScreen onUnlock={showPremium} />}
-        {screen === "settings" && <SettingsScreen onUnlock={showPremium} />}
-        {screen === "cardSetup" && <CardSetupScreen nav={setScreen} />}
+        {screen === "settings" && (
+          <SettingsScreen onUnlock={showPremium} onManageCards={() => setScreen("cardSetup")} />
+        )}
+        {screen === "cardSetup" && (
+          <CardSetupScreen nav={setScreen} active={active} onUnlock={showPremium} />
+        )}
         {screen === "emergency" && (
           <EmergencyScreen nav={setScreen} active={active} onUnlock={emergencyUnlock} />
         )}

@@ -7,7 +7,7 @@ import Timer from "lucide-react-native/icons/timer";
 import { Body, GhostButton, PrimaryButton, Screen, TapRipple, Title } from "../components";
 import { Nav } from "../nav";
 import { cancelCardRead, readCardUid } from "../nfc";
-import { getCardUid, getTodayStats, TodayStats } from "../store";
+import { getRegisteredCards, getTodayStats, TodayStats } from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
@@ -76,8 +76,8 @@ export default function HomeScreen({
       ]);
       return;
     }
-    const stored = await getCardUid();
-    if (!stored) {
+    const cards = await getRegisteredCards();
+    if (cards.length === 0) {
       nav("cardSetup");
       return;
     }
@@ -89,8 +89,8 @@ export default function HomeScreen({
       if (!r.cancelled) Alert.alert("Couldn't read card", r.error);
       return;
     }
-    if (r.uid !== stored) {
-      Alert.alert("Different card", "That isn't the card registered with TapIn.");
+    if (!cards.some((card) => card.uid === r.uid)) {
+      Alert.alert("Different card", "That card isn't registered with TapIn.");
       return;
     }
     try {

@@ -33,7 +33,13 @@ const DEFAULT_SHIELD_MESSAGE =
 
 type AccessState = { usage: boolean; overlay: boolean };
 
-export default function SettingsScreen({ onUnlock }: { onUnlock: () => void }) {
+export default function SettingsScreen({
+  onUnlock,
+  onManageCards,
+}: {
+  onUnlock: () => void;
+  onManageCards: () => void;
+}) {
   const { colors, mode, setMode } = useTheme();
   const { isPremium, ready: premiumReady } = usePremium();
   const [access, setAccess] = useState<AccessState>({ usage: false, overlay: false });
@@ -95,11 +101,11 @@ export default function SettingsScreen({ onUnlock }: { onUnlock: () => void }) {
       onPress: () => void Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION"),
     },
     {
-      title: "NFC",
-      detail: "Configure your TapIn card",
+      title: "TapIn cards",
+      detail: "Add or remove your NFC keys",
       status: "Open",
       icon: ScanLine,
-      onPress: () => void Linking.sendIntent("android.settings.NFC_SETTINGS"),
+      onPress: onManageCards,
     },
     {
       title: "App settings",

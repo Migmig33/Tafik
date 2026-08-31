@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { syncShieldMessage } from "./blocking";
+import { isBlockingSessionActive, syncShieldMessage } from "./blocking";
 
 // 100% on-device. No backend, no accounts. These are the only things the app
 // needs to remember between launches.
@@ -29,11 +29,90 @@ export async function setOnboardingDone(done: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.onboardingDone, done ? "1" : "0");
 }
 
-export async function getCardUid(): Promise<string | null> {
-  return AsyncStorage.getItem(KEYS.cardUid);
+export type RegisteredCard = { uid: string; label: string };
+
+function isRegisteredCard(value: unknown): value is RegisteredCard {
+  if (!value || typeof value !== "object") return false;
+  const card = value as Partial<RegisteredCard>;
+  return (
+    typeof card.uid === "string" &&
+    card.uid.trim().length > 0 &&
+    typeof card.label === "string" &&
+    card.label.trim().length > 0
+  );
 }
-export async function setCardUid(uid: string): Promise<void> {
-  await AsyncStorage.setItem(KEYS.cardUid, uid);
+
+function cleanCard(card: RegisteredCard): RegisteredCard {
+  return { uid: card.uid.trim().toLowerCase(), label: card.label.trim() };
+}
+
+/**
+ * Read every registered key. The old app wrote the UID itself at this key;
+ * replacing it in place on first read preserves the one physical key a user
+ * may rely on, while an existing array is never mistaken for legacy data.
+ */
+export async function getRegisteredCards(): Promise<RegisteredCard[]> {
+  const raw = await AsyncStorage.getItem(KEYS.cardUid);
+  if (!raw) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(isRegisteredCard).map(cleanCard);
+
+    // This also tolerates a legacy UID that happened to be stored as a JSON
+    // string by an intermediate build.
+    if (typeof parsed === "string" && parsed.trim()) {
+      const migrated = [{ uid: parsed.trim().toLowerCase(), label: "My card" }];
+      await AsyncStorage.setItem(KEYS.cardUid, JSON.stringify(migrated));
+      return migrated;
+    }
+  } catch {
+    // A legacy UID is deliberately plain text, so JSON parsing usually lands
+    // here. It is data to migrate, not a corrupt value to discard.
+  }
+
+  const migrated = [{ uid: raw.trim().toLowerCase(), label: "My card" }];
+  await AsyncStorage.setItem(KEYS.cardUid, JSON.stringify(migrated));
+  return migrated;
+}
+
+async function setRegisteredCards(cards: RegisteredCard[]): Promise<void> {
+  await AsyncStorage.setItem(KEYS.cardUid, JSON.stringify(cards.map(cleanCard)));
+}
+
+/**
+ * Repeat the entitlement check here so a screen holding stale ownership state
+ * cannot slip a second key into the free tier.
+ */
+export async function addRegisteredCard(
+  card: RegisteredCard,
+  isPremium: boolean
+): Promise<RegisteredCard[]> {
+  const cards = await getRegisteredCards();
+  const nextCard = cleanCard(card);
+  if (cards.some(({ uid }) => uid === nextCard.uid)) {
+    throw new Error("That card is already registered.");
+  }
+  if (!isPremium && cards.length >= 1) {
+    throw new Error("TapIn Premium is required to register more than one card.");
+  }
+  const next = [...cards, nextCard];
+  await setRegisteredCards(next);
+  return next;
+}
+
+/**
+ * The final key stays put during a live session because otherwise the normal
+ * NFC exit disappears and the user is forced to spend an emergency unlock.
+ */
+export async function removeRegisteredCard(uid: string): Promise<RegisteredCard[]> {
+  const cards = await getRegisteredCards();
+  if (cards.length === 1 && cards[0].uid === uid && (await isBlockingSessionActive())) {
+    throw new Error("End the focus session before removing your only card.");
+  }
+  const next = cards.filter((card) => card.uid !== uid);
+  await setRegisteredCards(next);
+  return next;
 }
 
 export async function getBlocklist(): Promise<string[]> {
