@@ -10,6 +10,7 @@ import Moon from "lucide-react-native/icons/moon";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
+import ShieldLock from "lucide-react-native/icons/shield-lock";
 import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
 import { hasOverlayPermission, hasUsageAccess } from "../blocking";
@@ -240,6 +241,24 @@ export default function SettingsScreen({
               </Pressable>
             );
           })}
+
+          {/* Strict mode is not built yet, so this is a plain View: no onPress,
+              no chevron, nothing that invites a tap. Everything is textDim so it
+              reads as deliberately unavailable beside the live rows above. */}
+          <View style={[styles.row, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+            <View
+              style={[styles.iconBox, styles.pendingIconBox, { backgroundColor: colors.bg, borderColor: colors.border }]}
+            >
+              <ShieldLock size={20} color={colors.textDim} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.textDim, fontSize: 15, fontWeight: "600" }}>Strict mode</Text>
+              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                Prevents uninstalling or force-stopping TapIn during a session.
+              </Text>
+            </View>
+            <Text style={{ color: colors.textDim, fontSize: 12, fontWeight: "600" }}>Coming soon</Text>
+          </View>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>EMERGENCY ACCESS</Text>
@@ -307,6 +326,9 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pendingIconBox: {
+    borderWidth: StyleSheet.hairlineWidth,
   },
   shieldBody: {
     gap: space(1.25),
