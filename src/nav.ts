@@ -4,6 +4,7 @@ export type ScreenName =
   | "insights"
   | "blocklist"
   | "settings"
+  | "privacy"
   | "cardSetup"
   | "emergency";
 

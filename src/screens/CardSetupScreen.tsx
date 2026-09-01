@@ -262,7 +262,7 @@ export default function CardSetupScreen({
     },
     confirm: {
       title: "Tap once more",
-      body: "Same card again — this checks its ID stays the same.",
+      body: "Same card again. This checks its ID stays the same.",
     },
     done: {
       title: "Card registered",

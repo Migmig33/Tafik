@@ -3,8 +3,10 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { useColorScheme } from "react-native";
 import { syncBlockingAppearance } from "./blocking";
 
-// The palette is monochrome at rest. The accent green appears ONLY to signal
-// an active focus session — it is a state color with a job, not decoration.
+// The palette is fully monochrome: there is no hue anywhere in the app. What
+// used to be a green state colour is now the darkest neutral in light mode and
+// the lightest in dark, so an active session still reads as "on" through
+// contrast alone rather than through hue.
 export type Palette = {
   bg: string;
   surface: string;
@@ -12,31 +14,48 @@ export type Palette = {
   textDim: string;
   border: string;
   accent: string;
-  // A calm tint used to wash the screen when a session is active.
+  // A calm neutral tint used to wash the screen when a session is active.
   accentWash: string;
   onAccent: string;
+  // Dims the page behind a modal. Translucent by nature, so it is the one
+  // token that is not a flat colour.
+  scrim: string;
+  // The only hue left in the palette. Reserved for stopping something that is
+  // already running, so it never competes with anything else on screen.
+  danger: string;
+  onDanger: string;
 };
 
 const light: Palette = {
-  bg: "#F5F5F0",
+  // bg and surface are deliberately the same white: cards and the tab bar are
+  // separated by their hairline border and elevation, not by a fill.
+  bg: "#FFFFFF",
   surface: "#FFFFFF",
-  text: "#1C211E",
-  textDim: "#70766F",
-  border: "#E5E9E3",
-  accent: "#3D684F",
-  accentWash: "#E8F1EB",
+  text: "#1A1A1A",
+  textDim: "#737373",
+  border: "#E8E8E8",
+  accent: "#1A1A1A",
+  accentWash: "#F2F2F2",
   onAccent: "#FFFFFF",
+  scrim: "rgba(0, 0, 0, 0.4)",
+  danger: "#C0392B",
+  onDanger: "#FFFFFF",
 };
 
 const dark: Palette = {
-  bg: "#101310",
-  surface: "#1A1F1B",
-  text: "#F3F6F2",
-  textDim: "#9DA59E",
-  border: "#2A312B",
-  accent: "#83BE98",
-  accentWash: "#1D2B22",
-  onAccent: "#0F1611",
+  bg: "#101010",
+  surface: "#1A1A1A",
+  text: "#F5F5F5",
+  textDim: "#A1A1A1",
+  border: "#2E2E2E",
+  // Inverted against light mode: accent is the lightest neutral here, so a
+  // filled button stays light-on-dark the way it is dark-on-light.
+  accent: "#F5F5F5",
+  accentWash: "#262626",
+  onAccent: "#101010",
+  scrim: "rgba(0, 0, 0, 0.6)",
+  danger: "#E74C3C",
+  onDanger: "#FFFFFF",
 };
 
 export const radius = { input: 14, card: 18, pill: 999 } as const;

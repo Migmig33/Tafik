@@ -1,27 +1,43 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Hourglass from "lucide-react-native/icons/hourglass";
 import Lock from "lucide-react-native/icons/lock";
+import Repeat2 from "lucide-react-native/icons/repeat-2";
+import Timer from "lucide-react-native/icons/timer";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import type { DimensionValue } from "react-native";
-import { AppScreenTime, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
+import type { LucideIcon } from "lucide-react-native";
+import { AppScreenTime, getInstalledApps, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
 import { Screen, Title } from "../components";
 import { usePremium } from "../premium";
+import { getSessions, SessionRecord, todayKey } from "../store";
 import { radius, space, useTheme } from "../theme";
 import { Text } from "../typography";
 
 type Period = "today" | "yesterday" | "week";
+type FocusDay = { date: string; seconds: number; sessions: number };
 
 /** Days the chart covers, and the size of each half of the trend comparison. */
 const WEEK = 7;
+const APP_PREVIEW_COUNT = 4;
 
 function duration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
+/** Narrow two-line value that fits above one column of the seven-day chart. */
+function chartDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours === 0) return `${minutes}m`;
+  return minutes === 0 ? `${hours}h` : `${hours}h\n${minutes}m`;
 }
 
 function dayName(date: string): string {
@@ -44,17 +60,64 @@ function combineApps(days: ScreenTimeDay[]): AppScreenTime[] {
   return [...combined.values()].sort((a, b) => b.seconds - a.seconds);
 }
 
+/** Local calendar dates represented by the selected insight period. */
+function focusDateKeys(period: Period, now = new Date()): Set<string> {
+  const keys = new Set<string>();
+  const length = period === "week" ? WEEK : 1;
+  const firstOffset = period === "yesterday" ? 1 : 0;
+
+  for (let index = 0; index < length; index += 1) {
+    const cursor = new Date(now);
+    cursor.setDate(cursor.getDate() - firstOffset - index);
+    keys.add(todayKey(cursor));
+  }
+  return keys;
+}
+
+/** Seven local-calendar days, oldest first, including zero-session days. */
+function focusWeek(sessions: SessionRecord[], now = new Date()): FocusDay[] {
+  return Array.from({ length: WEEK }, (_, index) => {
+    const cursor = new Date(now);
+    cursor.setDate(cursor.getDate() - (WEEK - 1 - index));
+    const date = todayKey(cursor);
+    const records = sessions.filter(
+      (session) => session.d === date && Number.isFinite(session.s) && session.s >= 0
+    );
+    return {
+      date,
+      seconds: records.reduce((total, session) => total + session.s, 0),
+      sessions: records.length,
+    };
+  });
+}
+
 export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) {
   const { colors } = useTheme();
   // Free sees how long today and yesterday were. Premium sees the shape of it:
   // which apps, the week, and whether the week is going the right way.
   const { isPremium, ready: premiumReady } = usePremium();
   const [period, setPeriod] = useState<Period>("today");
+  const [showAllApps, setShowAllApps] = useState(false);
   const [days, setDays] = useState<ScreenTimeDay[] | null | undefined>(undefined);
+  const [sessions, setSessions] = useState<SessionRecord[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // Launcher icons keyed by package. Screen-time rows carry only a name and a
+  // package, so the icons are fetched separately and joined on pkg.
+  const [icons, setIcons] = useState<Record<string, string>>({});
+
+  // A missing icon is not worth surfacing: the row falls back to a lettered
+  // tile and the timings — the actual point of the screen — are unaffected.
+  useEffect(() => {
+    getInstalledApps()
+      .then((apps) => setIcons(Object.fromEntries(apps.map((app) => [app.pkg, app.icon]))))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const refresh = async () => {
+      // Focus history is independent of Usage Access, so refresh it even if
+      // Android screen-time access is missing or its query fails.
+      void getSessions().then(setSessions).catch(() => setSessions([]));
       try {
         setDays(await getScreenTimeInsights());
         setError(null);
@@ -82,9 +145,34 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
       period === "today" ? days.slice(-1) : period === "yesterday" ? days.slice(-2, -1) : chartDays;
     return {
       seconds: selectedDays.reduce((total, day) => total + day.seconds, 0),
-      apps: combineApps(selectedDays),
+      // The UI reports whole minutes, so an entry below one minute would read
+      // as a misleading "0m". Keep those tiny samples out of the ranked list.
+      apps: combineApps(selectedDays).filter((app) => app.seconds >= 60),
     };
   }, [days, period, chartDays]);
+
+  const visibleApps = useMemo(
+    () => (showAllApps ? summary.apps : summary.apps.slice(0, APP_PREVIEW_COUNT)),
+    [showAllApps, summary.apps]
+  );
+
+  useEffect(() => {
+    setShowAllApps(false);
+  }, [period]);
+
+  const focusSummary = useMemo(() => {
+    if (!sessions) return null;
+    const keys = focusDateKeys(period);
+    const selected = sessions.filter(
+      (session) => keys.has(session.d) && Number.isFinite(session.s) && session.s >= 0
+    );
+    return {
+      seconds: selected.reduce((total, session) => total + session.s, 0),
+      count: selected.length,
+    };
+  }, [period, sessions]);
+
+  const focusWeekDays = useMemo(() => focusWeek(sessions ?? []), [sessions]);
 
   // Week over week. Older builds only return seven days, so there is nothing to
   // compare against and the card is left out rather than shown as a flat zero.
@@ -138,9 +226,18 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
           })}
         </View>
 
+        <FocusSummaryCard
+          label={periodLabel}
+          seconds={focusSummary?.seconds}
+          sessions={focusSummary?.count}
+        />
+        {period === "week" && sessions !== undefined ? (
+          <TappedInWeekChart days={focusWeekDays} />
+        ) : null}
+
         {error ? (
           <View style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Insights unavailable</Text>
+            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Screen time unavailable</Text>
             <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{error}</Text>
           </View>
         ) : days === undefined || !premiumReady ? (
@@ -187,9 +284,11 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
             {isPremium ? (
               <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {summary.apps.length === 0 ? (
-                  <Text style={{ color: colors.textDim, fontSize: 14, padding: space(2) }}>No app activity recorded.</Text>
+                  <Text style={{ color: colors.textDim, fontSize: 14, padding: space(2) }}>
+                    No app activity of at least one minute.
+                  </Text>
                 ) : (
-                  summary.apps.map((app, index) => (
+                  visibleApps.map((app, index) => (
                     <View
                       key={app.pkg}
                       style={[
@@ -197,9 +296,7 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
                         index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
                       ]}
                     >
-                      <View style={[styles.rank, { backgroundColor: colors.accentWash }]}>
-                        <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>{index + 1}</Text>
-                      </View>
+                      <AppIcon name={app.name} uri={icons[app.pkg]} />
                       <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: 15 }}>
                         {app.name}
                       </Text>
@@ -209,6 +306,30 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
                     </View>
                   ))
                 )}
+                {summary.apps.length > APP_PREVIEW_COUNT ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showAllApps }}
+                    accessibilityLabel={showAllApps ? "Show fewer apps" : "View all app usage"}
+                    onPress={() => setShowAllApps((current) => !current)}
+                    style={({ pressed }) => [
+                      styles.viewAllRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: pressed ? colors.accentWash : colors.surface,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
+                      {showAllApps ? "Show less" : `View all ${summary.apps.length} apps`}
+                    </Text>
+                    {showAllApps ? (
+                      <ChevronUp size={16} color={colors.accent} strokeWidth={2.2} />
+                    ) : (
+                      <ChevronDown size={16} color={colors.accent} strokeWidth={2.2} />
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
             ) : (
               <PremiumLock
@@ -223,6 +344,146 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+/** TapIn's own completed focus sessions for the period selected above. */
+function FocusSummaryCard({
+  label,
+  seconds,
+  sessions,
+}: {
+  label: string;
+  seconds?: number;
+  sessions?: number;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.focusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.focusCardHeader}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>TappedIn</Text>
+        <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
+      </View>
+      <View style={styles.focusMetrics}>
+        <FocusInsightMetric
+          icon={Timer}
+          label="Focused time"
+          value={seconds === undefined ? "—" : duration(seconds)}
+        />
+        <View style={[styles.focusDivider, { backgroundColor: colors.border }]} />
+        <FocusInsightMetric
+          icon={Repeat2}
+          label="Sessions"
+          value={sessions === undefined ? "—" : String(sessions)}
+        />
+      </View>
+    </View>
+  );
+}
+
+function FocusInsightMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.focusMetric}>
+      <View style={[styles.focusMetricIcon, { backgroundColor: colors.accentWash }]}>
+        <Icon size={17} color={colors.accent} strokeWidth={2.2} />
+      </View>
+      <View>
+        <Text style={[styles.focusMetricValue, { color: colors.text }]}>{value}</Text>
+        <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** Mobile-friendly horizontal bars leave room for exact daily values. */
+function TappedInWeekChart({ days }: { days: FocusDay[] }) {
+  const { colors } = useTheme();
+  const max = Math.max(...days.map((day) => day.seconds), 1);
+
+  return (
+    <View style={[styles.focusChart, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.focusChartHeader}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+          Daily TappedIn
+        </Text>
+        <Text style={{ color: colors.textDim, fontSize: 12 }}>Focused · Sessions</Text>
+      </View>
+
+      <View style={styles.focusChartRows}>
+        {days.map((day) => {
+          const width = day.seconds === 0 ? 0 : Math.max(3, (day.seconds / max) * 100);
+          return (
+            <View key={day.date} style={styles.focusChartRow}>
+              <View style={styles.focusDayLabel}>
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
+                  {dayName(day.date)}
+                </Text>
+                <Text style={{ color: colors.textDim, fontSize: 10 }}>
+                  {new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </Text>
+              </View>
+              <View style={[styles.focusBarTrack, { backgroundColor: colors.accentWash }]}>
+                <View
+                  style={[
+                    styles.focusBar,
+                    { backgroundColor: colors.accent, width: `${width}%` },
+                  ]}
+                />
+              </View>
+              <View style={styles.focusDayValues}>
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
+                  {duration(day.seconds)}
+                </Text>
+                <Text style={{ color: colors.textDim, fontSize: 10 }}>
+                  {day.sessions} {day.sessions === 1 ? "session" : "sessions"}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The app's own launcher icon, straight from the package manager. Usage stats
+ * can name packages the launcher does not list — TapIn itself, keyboards,
+ * system UI — so anything without an icon falls back to a lettered tile rather
+ * than leaving a hole in the row.
+ */
+function AppIcon({ name, uri }: { name: string; uri?: string }) {
+  const { colors } = useTheme();
+
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={[styles.appIcon, { backgroundColor: colors.accentWash }]}
+        resizeMode="contain"
+        fadeDuration={0}
+      />
+    );
+  }
+
+  return (
+    <View style={[styles.appIcon, styles.appIconFallback, { backgroundColor: colors.accentWash }]}>
+      <Text style={{ color: colors.textDim, fontSize: 12, fontWeight: "600" }}>
+        {name.trim().charAt(0).toUpperCase() || "?"}
+      </Text>
+    </View>
   );
 }
 
@@ -299,17 +560,25 @@ function WeekChart({ days, placeholder }: { days: ScreenTimeDay[]; placeholder?:
         {days.map((day, index) => (
           <View key={day.date} style={styles.barColumn}>
             <View style={styles.barTrack}>
-              <View
-                style={[
-                  styles.bar,
-                  placeholder
-                    ? { backgroundColor: colors.border, height: sample[index % sample.length] }
-                    : {
-                        backgroundColor: colors.accent,
-                        height: day.seconds === 0 ? 3 : Math.max(8, Math.round((day.seconds / max) * 88)),
-                      },
-                ]}
-              />
+              <Text style={[styles.barValue, { color: colors.textDim }]}>
+                {placeholder ? "••" : chartDuration(day.seconds)}
+              </Text>
+              <View style={styles.barArea}>
+                <View
+                  style={[
+                    styles.bar,
+                    placeholder
+                      ? { backgroundColor: colors.border, height: sample[index % sample.length] }
+                      : {
+                          backgroundColor: colors.accent,
+                          height:
+                            day.seconds === 0
+                              ? 3
+                              : Math.max(8, Math.round((day.seconds / max) * 88)),
+                        },
+                  ]}
+                />
+              </View>
             </View>
             <Text style={{ color: colors.textDim, fontSize: 11 }}>{dayName(day.date)}</Text>
           </View>
@@ -319,7 +588,7 @@ function WeekChart({ days, placeholder }: { days: ScreenTimeDay[]; placeholder?:
   );
 }
 
-/** Redacted rows: the ranking is visible, the data behind it is not. */
+/** Redacted rows: the shape of the list is visible, the data behind it is not. */
 function AppListPlaceholder() {
   const { colors } = useTheme();
   const widths: DimensionValue[] = ["62%", "48%", "70%", "40%"];
@@ -334,9 +603,7 @@ function AppListPlaceholder() {
             index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
           ]}
         >
-          <View style={[styles.rank, { backgroundColor: colors.accentWash }]}>
-            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>{index + 1}</Text>
-          </View>
+          <View style={[styles.appIcon, { backgroundColor: colors.border }]} />
           <View style={[styles.redaction, { backgroundColor: colors.border, width }]} />
           <View style={{ flex: 1 }} />
           <View style={[styles.redaction, { backgroundColor: colors.border, width: 42 }]} />
@@ -426,6 +693,87 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: space(1.1),
   },
+  focusCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    padding: space(1.75),
+    marginBottom: space(2),
+  },
+  focusCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1),
+    marginBottom: space(1.5),
+  },
+  focusMetrics: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  focusMetric: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1),
+  },
+  focusMetricIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  focusMetricValue: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.3,
+  },
+  focusDivider: {
+    width: StyleSheet.hairlineWidth,
+    marginHorizontal: space(1.25),
+  },
+  focusChart: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    padding: space(1.75),
+    marginBottom: space(2),
+  },
+  focusChartHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1),
+    marginBottom: space(1.5),
+  },
+  focusChartRows: {
+    gap: space(1.1),
+  },
+  focusChartRow: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1),
+  },
+  focusDayLabel: {
+    width: 38,
+  },
+  focusBarTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  focusBar: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  focusDayValues: {
+    width: 76,
+    alignItems: "flex-end",
+  },
   messageCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
@@ -466,7 +814,7 @@ const styles = StyleSheet.create({
     marginBottom: space(2),
   },
   bars: {
-    height: 118,
+    height: 142,
     flexDirection: "row",
     alignItems: "flex-end",
     gap: space(0.75),
@@ -479,6 +827,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   barTrack: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+  },
+  barValue: {
+    width: "100%",
+    height: 22,
+    fontSize: 9,
+    lineHeight: 10,
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  barArea: {
     flex: 1,
     width: "60%",
     justifyContent: "flex-end",
@@ -506,10 +867,22 @@ const styles = StyleSheet.create({
     gap: space(1.25),
     paddingHorizontal: space(1.5),
   },
-  rank: {
+  viewAllRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space(0.75),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space(1.5),
+  },
+  // Same 28x28 footprint the rank badge had, so the rows keep their alignment.
+  appIcon: {
     width: 28,
     height: 28,
     borderRadius: 9,
+  },
+  appIconFallback: {
     alignItems: "center",
     justifyContent: "center",
   },

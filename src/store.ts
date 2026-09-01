@@ -229,6 +229,17 @@ export function emergencyResetLabel(now = new Date()): string {
   return `${MONTH_NAMES[next.getMonth()]} 1`;
 }
 
+/**
+ * Whole days until the allowance refills, counting from today. Both ends are
+ * local midnight, so a day that gains or loses an hour to DST still counts as
+ * one day. Returns 1 on the last day of the month, never 0.
+ */
+export function emergencyDaysUntilReset(now = new Date()): number {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return Math.round((next.getTime() - today.getTime()) / 86_400_000);
+}
+
 /** Usage for the current month. A record from an older month reads as unused. */
 async function readEmergencyRecord(): Promise<EmergencyRecord> {
   const month = monthKey();

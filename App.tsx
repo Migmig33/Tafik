@@ -5,7 +5,7 @@ import { Poppins_600SemiBold } from "@expo-google-fonts/poppins/600SemiBold";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins/700Bold";
 import { useFonts } from "expo-font";
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import {
   endBlockingSession,
   isBlockingSessionActive,
@@ -15,6 +15,7 @@ import {
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
 import { ScreenName } from "./src/nav";
+import { cancelCardRead, readCardUid } from "./src/nfc";
 import BlocklistScreen from "./src/screens/BlocklistScreen";
 import CardSetupScreen from "./src/screens/CardSetupScreen";
 import EmergencyScreen from "./src/screens/EmergencyScreen";
@@ -22,6 +23,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import IntroScreen from "./src/screens/IntroScreen";
 import InsightsScreen from "./src/screens/InsightsScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
+import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import WelcomeScreen from "./src/screens/WelcomeScreen";
 import {
@@ -31,6 +33,7 @@ import {
   getActiveSessionStartedAt,
   getBlocklist,
   getOnboardingDone,
+  getRegisteredCards,
   getShieldMessage,
   getWelcomeSeen,
   recordSession,
@@ -54,6 +57,10 @@ function AppContent() {
   const [active, setActive] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [blockCount, setBlockCount] = useState(0);
+  // Which read is open, if any. Arming the reader stays a deliberate step so a
+  // stray card cannot lock or unlock the phone; the tab bar's centre button is
+  // what arms it, and home renders the feedback.
+  const [scanning, setScanning] = useState<null | "start" | "end">(null);
 
   useEffect(() => {
     (async () => {
@@ -88,6 +95,12 @@ function AppContent() {
   // Refresh block count whenever we land back on home.
   useEffect(() => {
     if (screen === "home") getBlocklist().then((l) => setBlockCount(l.length));
+  }, [screen]);
+
+  // An armed reader that outlives the screen showing the ripple would sit
+  // listening with nothing on screen to say so.
+  useEffect(() => {
+    if (screen !== "home") void cancelCardRead();
   }, [screen]);
 
   // Hold on a bare background until storage answers, so we know which of the
@@ -154,6 +167,48 @@ function AppContent() {
     setStartedAt(null);
   };
 
+  // The one primary action, wherever the user is: arm the reader, then let the
+  // card decide whether this starts or ends a session. Lives here rather than
+  // on home because the button that triggers it is in the tab bar.
+  const tapIn = async () => {
+    if (scanning) return;
+    const mode = active ? "end" : "start";
+    // The ripple and the copy that explain the wait are on home, so never arm
+    // the reader while the user is looking at another tab.
+    if (screen !== "home") setScreen("home");
+    // Catch both dead ends before arming. Finding out that there is nothing to
+    // lock only after tapping the card is a wasted trip.
+    if (mode === "start" && blockCount === 0) {
+      Alert.alert("Nothing to lock", "Choose at least one app to lock first.", [
+        { text: "Not now", style: "cancel" },
+        { text: "Choose apps", onPress: () => setScreen("blocklist") },
+      ]);
+      return;
+    }
+    const cards = await getRegisteredCards();
+    if (cards.length === 0) {
+      setScreen("cardSetup");
+      return;
+    }
+    setScanning(mode);
+    const r = await readCardUid();
+    setScanning(null);
+    if ("error" in r) {
+      // A cancel is the user's own doing, so there is nothing to report.
+      if (!r.cancelled) Alert.alert("Couldn't read card", r.error);
+      return;
+    }
+    if (!cards.some((card) => card.uid === r.uid)) {
+      Alert.alert("Different card", "That card isn't registered with TapIn.");
+      return;
+    }
+    try {
+      await (mode === "start" ? startSession() : endSession());
+    } catch (e: any) {
+      Alert.alert("TapIn couldn't lock apps", e?.message ?? "Please try again.");
+    }
+  };
+
   // The card-free way out. The allowance is checked before anything is torn
   // down, and only spent once the session has actually ended.
   const emergencyUnlock = async () => {
@@ -169,7 +224,14 @@ function AppContent() {
   return (
     <>
       <StatusBar style={isDark ? "light" : "dark"} />
-      <View style={{ flex: 1 }}>
+      {/* The tab bar sits outside Screen, so the shell paints the same ground
+          under it — otherwise a band of a different colour shows behind the bar. */}
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+        }}
+      >
         {screen === "onboarding" && <OnboardingScreen nav={setScreen} />}
         {screen === "home" && (
           <HomeScreen
@@ -177,15 +239,19 @@ function AppContent() {
             active={active}
             startedAt={startedAt}
             blockCount={blockCount}
-            onStart={startSession}
-            onEnd={endSession}
+            scanning={scanning}
+            onTapIn={() => void tapIn()}
           />
         )}
         {screen === "blocklist" && <BlocklistScreen />}
         {screen === "insights" && <InsightsScreen />}
         {screen === "settings" && (
-          <SettingsScreen onManageCards={() => setScreen("cardSetup")} />
+          <SettingsScreen
+            onManageCards={() => setScreen("cardSetup")}
+            onOpenPrivacy={() => setScreen("privacy")}
+          />
         )}
+        {screen === "privacy" && <PrivacyPolicyScreen onBack={() => setScreen("settings")} />}
         {screen === "cardSetup" && (
           <CardSetupScreen nav={setScreen} active={active} />
         )}
@@ -197,7 +263,14 @@ function AppContent() {
           screen === "insights" ||
           screen === "blocklist" ||
           screen === "settings") && (
-          <BottomNav current={screen} nav={setScreen} />
+          <BottomNav
+            current={screen}
+            nav={setScreen}
+            onTapIn={() => void tapIn()}
+            onCancel={() => void cancelCardRead()}
+            active={active}
+            scanning={scanning !== null}
+          />
         )}
       </View>
     </>

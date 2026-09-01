@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import Timer from "lucide-react-native/icons/timer";
-import { Body, GhostButton, PrimaryButton, Screen, TapRipple, Title } from "../components";
+import { AppMark, Body, GhostButton, Screen, TapRipple, Title } from "../components";
 import { Nav } from "../nav";
-import { cancelCardRead, readCardUid } from "../nfc";
-import { getRegisteredCards, getTodayStats, TodayStats } from "../store";
+import { getTodayStats, TodayStats } from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
@@ -32,23 +31,22 @@ export default function HomeScreen({
   active,
   startedAt,
   blockCount,
-  onStart,
-  onEnd,
+  scanning,
+  onTapIn,
 }: {
   nav: Nav;
   active: boolean;
   startedAt: number | null;
   blockCount: number;
-  onStart: () => Promise<void>;
-  onEnd: () => Promise<void>;
+  /** Which read is open, if any. The scan itself is owned by the app shell,
+      because the button that starts it now lives in the tab bar. */
+  scanning: null | "start" | "end";
+  /** Arm the reader. The same action the tab bar's centre button runs. */
+  onTapIn: () => void;
 }) {
   const { colors } = useTheme();
   const [now, setNow] = useState(Date.now());
   const [stats, setStats] = useState<TodayStats>({ seconds: 0, count: 0, streak: 0 });
-  // Which action is waiting for a card tap, if any. Arming the reader is a
-  // deliberate step so a stray tap cannot lock or unlock the phone, and so the
-  // button cannot be spammed into opening several reads at once.
-  const [scanning, setScanning] = useState<null | "start" | "end">(null);
 
   // Refresh stats whenever we return to the idle state (i.e. a session ended).
   useEffect(() => {
@@ -61,91 +59,53 @@ export default function HomeScreen({
     return () => clearInterval(id);
   }, [active]);
 
-  // Leaving the screen with the reader armed would leave it listening in the
-  // background, so drop the pending read on the way out.
-  useEffect(() => () => void cancelCardRead(), []);
-
-  const beginScan = async (mode: "start" | "end") => {
-    if (scanning) return;
-    // Catch both dead ends before arming the reader. Finding out that there is
-    // nothing to lock only after tapping the card is a wasted trip.
-    if (mode === "start" && blockCount === 0) {
-      Alert.alert("Nothing to lock", "Choose at least one app to lock first.", [
-        { text: "Not now", style: "cancel" },
-        { text: "Choose apps", onPress: () => nav("blocklist") },
-      ]);
-      return;
-    }
-    const cards = await getRegisteredCards();
-    if (cards.length === 0) {
-      nav("cardSetup");
-      return;
-    }
-    setScanning(mode);
-    const r = await readCardUid();
-    setScanning(null);
-    if ("error" in r) {
-      // A cancel is the user's own doing, so there is nothing to report.
-      if (!r.cancelled) Alert.alert("Couldn't read card", r.error);
-      return;
-    }
-    if (!cards.some((card) => card.uid === r.uid)) {
-      Alert.alert("Different card", "That card isn't registered with TapIn.");
-      return;
-    }
-    try {
-      await (mode === "start" ? onStart() : onEnd());
-    } catch (e: any) {
-      Alert.alert("TapIn couldn't lock apps", e?.message ?? "Please try again.");
-    }
-  };
-
-  const cancelScan = () => void cancelCardRead();
-
   if (active) {
     const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
     const waiting = scanning === "end";
     return (
-      <Screen tinted>
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: colors.accent, fontWeight: "600", letterSpacing: 0.3 }}>
-            {waiting ? "READY TO SCAN" : "FOCUS SESSION ACTIVE"}
-          </Text>
-        </View>
+      <Screen>
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.homeHeader}>
+            <AnimatedSwapText value="TappedIn">
+              {(label) => <Title>{label}</Title>}
+            </AnimatedSwapText>
+            <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
+              <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
+              <AnimatedSwapText value={waiting ? "Ready to scan" : "Session active"}>
+                {(label) => (
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                    {label}
+                  </Text>
+                )}
+              </AnimatedSwapText>
+            </View>
+          </View>
 
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <Text
-            style={{
-              color: colors.text,
-              fontSize: 56,
-              fontVariant: ["tabular-nums"],
-              fontWeight: "600",
-              letterSpacing: 1,
-            }}
-          >
-            {fmt(elapsed)}
-          </Text>
-          <View style={{ height: space(1) }} />
-          <Body dim>{blockCount} apps blocked</Body>
-        </View>
+          {/* The active mark keeps Home's exact circle size. Arming the reader
+              turns on the same expanding rings used by the start-card scan. */}
+          <View style={styles.focusCluster}>
+            <View style={styles.activeFocusContent}>
+              <TapRipple active={waiting} size={184} coreSize={116}>
+                <AppMark height={72} color={colors.text} />
+              </TapRipple>
+              <Text
+                accessibilityLabel={`Focus time ${fmt(elapsed)}`}
+                style={[styles.activeTimer, { color: colors.text }]}
+              >
+                {fmt(elapsed)}
+              </Text>
+              <Body dim>{blockCount} apps blocked</Body>
+              {waiting ? (
+                <Text style={[styles.scanInstruction, { color: colors.textDim }]}>
+                  Hold your card to the back of your phone.
+                </Text>
+              ) : null}
+            </View>
+          </View>
 
-        <Body dim>
-          {waiting
-            ? "Hold your card to the back of your phone."
-            : "Press End session, then tap your card."}
-        </Body>
-        <View style={{ height: space(1.5) }} />
-        {waiting ? (
-          <>
-            <PrimaryButton label="Waiting for card…" onPress={() => {}} disabled />
-            <GhostButton label="Cancel" onPress={cancelScan} />
-          </>
-        ) : (
-          <>
-            <PrimaryButton label="End session" onPress={() => beginScan("end")} />
-            <GhostButton label="Card lost? Emergency unlock" onPress={() => nav("emergency")} />
-          </>
-        )}
+          {/* Ending and cancelling live in the centre tab-bar button. */}
+          <GhostButton label="Card lost? Emergency unlock" onPress={() => nav("emergency")} />
+        </ScrollView>
       </Screen>
     );
   }
@@ -154,50 +114,139 @@ export default function HomeScreen({
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        showsVerticalScrollIndicator={false}
-      >
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Title>TapIn</Title>
-        <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-          <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
-          <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-            {stats.streak} {stats.streak === 1 ? "day" : "days"}
-          </Text>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.homeHeader}>
+          <AnimatedSwapText value="TapIn">
+            {(label) => <Title>{label}</Title>}
+          </AnimatedSwapText>
+          <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
+            <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
+            <AnimatedSwapText
+              value={`${stats.streak} ${stats.streak === 1 ? "day" : "days"}`}
+            >
+              {(label) => (
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                  {label}
+                </Text>
+              )}
+            </AnimatedSwapText>
+          </View>
         </View>
-      </View>
 
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <TapRipple active={waiting} />
-        <View style={{ height: space(3) }} />
-        <Text style={{ color: waiting ? colors.accent : colors.text, fontSize: 20, fontWeight: "600" }}>
-          {waiting ? "Ready to scan" : "Press TapIn to begin"}
-        </Text>
-        <View style={{ height: space(0.5) }} />
-        <Body dim>
-          {waiting
-            ? "Hold your card to the back of your phone."
-            : `Then tap your card. ${blockCount} apps will be locked.`}
-        </Body>
-      </View>
+        {/* Ripple and caption are one unit: the gap holds them together so the
+            circle reads as the thing the words are about. The pressable wraps
+            only that unit, not the centring box around it, so a tap in the
+            empty space either side cannot arm the reader by accident. */}
+        <View style={styles.focusCluster}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="TapIn to begin"
+            accessibilityState={{ disabled: waiting }}
+            onPress={onTapIn}
+            disabled={waiting}
+            style={({ pressed }) => [styles.focusTarget, { opacity: pressed ? 0.68 : 1 }]}
+          >
+            <TapRipple active={waiting} size={184} coreSize={116} />
+            <Text
+              style={{
+                color: waiting ? colors.accent : colors.text,
+                fontSize: 20,
+                fontWeight: "600",
+              }}
+            >
+              {waiting ? "Ready to scan" : "TapIn to begin"}
+            </Text>
+            <Body dim>
+              {waiting
+                ? "Hold your card to the back of your phone."
+                : `${blockCount} apps will be locked.`}
+            </Body>
+          </Pressable>
+        </View>
 
-      <Text style={[styles.sectionLabel, { color: colors.textDim }]}>TODAY&apos;S FOCUS</Text>
-      <View style={styles.metricsRow}>
-        <FocusMetric icon={Timer} label="Focused" value={human(stats.seconds)} />
-        <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
-      </View>
-
-      {waiting ? (
-        <>
-          <PrimaryButton label="Waiting for card…" onPress={() => {}} disabled />
-          <GhostButton label="Cancel" onPress={cancelScan} />
-        </>
-      ) : (
-        <PrimaryButton label="TapIn" onPress={() => beginScan("start")} />
-      )}
+        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>TODAY&apos;S FOCUS</Text>
+        <View style={styles.metricsRow}>
+          <FocusMetric icon={Timer} label="Focused" value={human(stats.seconds)} />
+          <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
+        </View>
       </ScrollView>
     </Screen>
+  );
+}
+
+/** Fade the old label away, then let the replacement settle down into place. */
+function AnimatedSwapText({
+  value,
+  children,
+}: {
+  value: string;
+  children: (displayedValue: string) => React.ReactNode;
+}) {
+  const [displayed, setDisplayed] = useState(value);
+  const current = useRef(value);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // If a very quick state reversal cancels the outgoing label before it was
+    // swapped, return that still-correct label to a fully visible resting state.
+    if (value === current.current) {
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+      opacity.setValue(1);
+      translateY.setValue(0);
+      return;
+    }
+    let cancelled = false;
+
+    opacity.stopAnimation();
+    translateY.stopAnimation();
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 120,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 6,
+        duration: 120,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished || cancelled) return;
+      current.current = value;
+      setDisplayed(value);
+      opacity.setValue(0);
+      translateY.setValue(-8);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    return () => {
+      cancelled = true;
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+    };
+  }, [opacity, translateY, value]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children(displayed)}
+    </Animated.View>
   );
 }
 
@@ -207,7 +256,7 @@ function FocusMetric({ icon: Icon, label, value }: { icon: LucideIcon; label: st
   return (
     <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.metricHeader}>
-        <Icon size={18} color={colors.accent} strokeWidth={2.2} />
+        <Icon size={16} color={colors.accent} strokeWidth={2.2} />
         <Text style={{ color: colors.textDim, fontSize: 13 }}>{label}</Text>
       </View>
       <Text style={[styles.metricValue, { color: colors.text }]}>{value}</Text>
@@ -216,6 +265,12 @@ function FocusMetric({ icon: Icon, label, value }: { icon: LucideIcon; label: st
 }
 
 const styles = StyleSheet.create({
+  homeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1.5),
+  },
   streakPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -223,6 +278,32 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: space(1.25),
     paddingVertical: space(0.75),
+  },
+  focusCluster: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  focusTarget: {
+    alignItems: "center",
+    gap: space(1),
+  },
+  activeFocusContent: {
+    alignItems: "center",
+  },
+  activeTimer: {
+    marginTop: space(1),
+    fontSize: 44,
+    lineHeight: 54,
+    fontVariant: ["tabular-nums"],
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  scanInstruction: {
+    marginTop: space(1),
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
   },
   sectionLabel: {
     fontSize: 11,
@@ -233,25 +314,31 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: "row",
     gap: space(1.5),
-    marginBottom: space(2),
   },
+  // Laid out along one line rather than stacked: two numbers do not need a
+  // card half the height of the screen's focal point.
   metricCard: {
     flex: 1,
-    minHeight: 94,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    gap: space(1),
+    minHeight: 48,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
-    padding: space(1.75),
+    paddingHorizontal: space(1.5),
+    paddingVertical: space(1),
   },
   metricHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: space(0.75),
+    minWidth: 0,
   },
   metricValue: {
-    fontSize: 25,
+    fontSize: 19,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
 });

@@ -390,26 +390,28 @@ class ForegroundBlockService : Service() {
     strokeColor?.let { setStroke(dp(1), it) }
   }
 
+  // Mirrors src/theme.ts exactly. The two copies have to be changed together
+  // or the shield stops looking like the app that put it there.
   private fun overlayPalette(dark: Boolean): OverlayPalette = if (dark) {
     OverlayPalette(
-      background = Color.parseColor("#101310"),
-      surface = Color.parseColor("#1A1F1B"),
-      text = Color.parseColor("#F3F6F2"),
-      textDim = Color.parseColor("#9DA59E"),
-      border = Color.parseColor("#2A312B"),
-      accent = Color.parseColor("#83BE98"),
-      accentWash = Color.parseColor("#1D2B22"),
-      onAccent = Color.parseColor("#0F1611")
+      background = Color.parseColor("#101010"),
+      surface = Color.parseColor("#1A1A1A"),
+      text = Color.parseColor("#F5F5F5"),
+      textDim = Color.parseColor("#A1A1A1"),
+      border = Color.parseColor("#2E2E2E"),
+      accent = Color.parseColor("#F5F5F5"),
+      accentWash = Color.parseColor("#262626"),
+      onAccent = Color.parseColor("#101010")
     )
   } else {
     OverlayPalette(
-      background = Color.parseColor("#F5F5F0"),
+      background = Color.WHITE,
       surface = Color.WHITE,
-      text = Color.parseColor("#1C211E"),
-      textDim = Color.parseColor("#70766F"),
-      border = Color.parseColor("#E5E9E3"),
-      accent = Color.parseColor("#3D684F"),
-      accentWash = Color.parseColor("#E8F1EB"),
+      text = Color.parseColor("#1A1A1A"),
+      textDim = Color.parseColor("#737373"),
+      border = Color.parseColor("#E8E8E8"),
+      accent = Color.parseColor("#1A1A1A"),
+      accentWash = Color.parseColor("#F2F2F2"),
       onAccent = Color.WHITE
     )
   }

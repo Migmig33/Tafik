@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Bell from "lucide-react-native/icons/bell";
+import FileText from "lucide-react-native/icons/file-text";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Layers from "lucide-react-native/icons/layers";
 import Lock from "lucide-react-native/icons/lock";
@@ -11,14 +12,16 @@ import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import ShieldLock from "lucide-react-native/icons/shield-lock";
+import Star from "lucide-react-native/icons/star";
 import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
 import { hasOverlayPermission, hasUsageAccess } from "../blocking";
-import { Body, Screen, Title } from "../components";
+import { Body, InfoSheet, PrimaryButton, Screen, Title } from "../components";
 import { usePremium } from "../premium";
 import {
   EMERGENCY_HOLD_SECONDS,
   EMERGENCY_UNLOCKS_PER_MONTH,
+  emergencyDaysUntilReset,
   emergencyResetLabel,
   getEmergencyUnlocksLeft,
   getShieldMessage,
@@ -27,6 +30,42 @@ import {
 } from "../store";
 import { radius, space, ThemeMode, useTheme } from "../theme";
 import { Text, TextInput } from "../typography";
+
+// Empty until TapIn is published. Filling this in is all that is needed to
+// make the rate row open its store listing.
+const PLAY_STORE_URL = "";
+
+/** The two outbound links, and what to say while there is nowhere to go yet. */
+type AboutLink = {
+  key: "privacy" | "rate";
+  title: string;
+  detail: string;
+  url: string;
+  icon: LucideIcon;
+  /** Shown in the sheet the row opens while its URL is still empty. */
+  pending: string;
+};
+
+const aboutLinks: AboutLink[] = [
+  {
+    key: "privacy",
+    title: "Privacy policy",
+    detail: "How TapIn handles data and permissions.",
+    url: "",
+    icon: FileText,
+    pending: "",
+  },
+  {
+    key: "rate",
+    title: "Rate TapIn",
+    detail: "Leave a review on Google Play.",
+    url: PLAY_STORE_URL,
+    icon: Star,
+    pending:
+      "TapIn is not on Google Play yet. Once it is published this row will open " +
+      "its store listing so you can leave a review.",
+  },
+];
 
 /** What the shield says when the user has not written their own line. */
 const DEFAULT_SHIELD_MESSAGE =
@@ -37,15 +76,23 @@ type AccessState = { usage: boolean; overlay: boolean };
 export default function SettingsScreen({
   onUnlock,
   onManageCards,
+  onOpenPrivacy,
 }: {
   onUnlock?: () => void;
   onManageCards: () => void;
+  onOpenPrivacy: () => void;
 }) {
   const { colors, mode, setMode } = useTheme();
   const { isPremium, ready: premiumReady } = usePremium();
   const [access, setAccess] = useState<AccessState>({ usage: false, overlay: false });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
   const [shieldDraft, setShieldDraft] = useState("");
+  // The row only has room for a summary, so the rest of the explanation lives
+  // in a sheet the row opens.
+  const [strictInfoOpen, setStrictInfoOpen] = useState(false);
+  const [emergencyInfoOpen, setEmergencyInfoOpen] = useState(false);
+  // Which outbound link the user pressed before it had somewhere to go.
+  const [pendingLink, setPendingLink] = useState<AboutLink | null>(null);
 
   useEffect(() => {
     getShieldMessage().then(setShieldDraft);
@@ -75,6 +122,7 @@ export default function SettingsScreen({
     return () => subscription.remove();
   }, [refresh]);
 
+  const resetsIn = emergencyDaysUntilReset();
   const appearance: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
     { value: "system", label: "System", icon: Monitor },
     { value: "light", label: "Light", icon: Sun },
@@ -159,10 +207,10 @@ export default function SettingsScreen({
                   <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+                  <Text style={[styles.rowTitle, { color: colors.text }]}>
                     Your words on the shield
                   </Text>
-                  <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                  <Text style={[styles.rowDetail, { color: colors.textDim }]}>
                     Shown when a locked app is opened. Leave it empty for TapIn&apos;s own line.
                   </Text>
                 </View>
@@ -183,7 +231,7 @@ export default function SettingsScreen({
                   { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border },
                 ]}
               />
-              <Text style={{ color: colors.textDim, fontSize: 11, textAlign: "right" }}>
+              <Text style={{ color: colors.textDim, fontSize: 12, textAlign: "right" }}>
                 {shieldDraft.length} / {SHIELD_MESSAGE_MAX_LENGTH}
               </Text>
             </View>
@@ -201,10 +249,10 @@ export default function SettingsScreen({
               <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>
                 Your words on the shield
               </Text>
-              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
                 Write what a locked app should say back to you. Premium.
               </Text>
             </View>
@@ -231,10 +279,10 @@ export default function SettingsScreen({
                   <Icon size={20} color={colors.accent} strokeWidth={2.1} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>{row.title}</Text>
-                  <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3 }}>{row.detail}</Text>
+                  <Text style={[styles.rowTitle, { color: colors.text }]}>{row.title}</Text>
+                  <Text style={[styles.rowDetail, { color: colors.textDim }]}>{row.detail}</Text>
                 </View>
-                <Text style={{ color: allowed ? colors.accent : colors.textDim, fontSize: 12, fontWeight: "600" }}>
+                <Text style={[styles.rowStatus, { color: allowed ? colors.accent : colors.textDim }]}>
                   {row.status}
                 </Text>
                 <ChevronRight size={17} color={colors.textDim} />
@@ -242,45 +290,158 @@ export default function SettingsScreen({
             );
           })}
 
-          {/* Strict mode is not built yet, so this is a plain View: no onPress,
-              no chevron, nothing that invites a tap. Everything is textDim so it
-              reads as deliberately unavailable beside the live rows above. */}
-          <View style={[styles.row, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+          {/* Still unavailable, so everything stays textDim — but the row is
+              tappable now, because the short description alone does not explain
+              what strict mode will do. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Strict mode, coming soon"
+            onPress={() => setStrictInfoOpen(true)}
+            style={({ pressed }) => [
+              styles.row,
+              { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+              { opacity: pressed ? 0.68 : 1 },
+            ]}
+          >
             <View
               style={[styles.iconBox, styles.pendingIconBox, { backgroundColor: colors.bg, borderColor: colors.border }]}
             >
               <ShieldLock size={20} color={colors.textDim} strokeWidth={2.1} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.textDim, fontSize: 15, fontWeight: "600" }}>Strict mode</Text>
-              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
-                Prevents uninstalling or force-stopping TapIn during a session.
+              <Text style={[styles.rowTitle, { color: colors.textDim }]}>Strict mode</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                Can&apos;t uninstall or force-stop TapIn.
               </Text>
             </View>
-            <Text style={{ color: colors.textDim, fontSize: 12, fontWeight: "600" }}>Coming soon</Text>
-          </View>
+            <Text style={[styles.rowStatus, { color: colors.textDim }]}>Coming soon</Text>
+          </Pressable>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>EMERGENCY ACCESS</Text>
         <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.row}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Emergency unlocks"
+            onPress={() => setEmergencyInfoOpen(true)}
+            style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
+          >
             <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
               <ShieldAlert size={20} color={colors.accent} strokeWidth={2.1} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Emergency unlocks</Text>
-              <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
-                Lost your card? Hold the unlock on the session screen for {EMERGENCY_HOLD_SECONDS}s.
-                Resets to {EMERGENCY_UNLOCKS_PER_MONTH} on {emergencyResetLabel()}.
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Emergency unlocks</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                Unlock without your card.
               </Text>
             </View>
-            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
+            <Text style={[styles.rowStatus, { color: colors.accent }]}>
               {emergencyLeft === null ? "—" : `${emergencyLeft} left`}
             </Text>
-          </View>
+          </Pressable>
+        </View>
+        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>ABOUT</Text>
+        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {aboutLinks.map((link, index) => {
+            const Icon = link.icon;
+            const ready = link.key === "privacy" || link.url.length > 0;
+            return (
+              <Pressable
+                key={link.key}
+                accessibilityRole="link"
+                accessibilityLabel={link.title}
+                onPress={() => {
+                  if (link.key === "privacy") {
+                    onOpenPrivacy();
+                    return;
+                  }
+                  // Nothing to open yet, so say so rather than failing silently.
+                  if (!ready) {
+                    setPendingLink(link);
+                    return;
+                  }
+                  Linking.openURL(link.url).catch(() => setPendingLink(link));
+                }}
+                style={({ pressed }) => [
+                  styles.row,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+                  { opacity: pressed ? 0.68 : 1 },
+                ]}
+              >
+                <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+                  <Icon size={20} color={colors.accent} strokeWidth={2.1} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.rowTitle, { color: colors.text }]}>{link.title}</Text>
+                  <Text style={[styles.rowDetail, { color: colors.textDim }]}>{link.detail}</Text>
+                </View>
+                <ChevronRight size={17} color={colors.textDim} />
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
+
+      <InfoSheet
+        visible={pendingLink !== null}
+        onClose={() => setPendingLink(null)}
+        icon={pendingLink?.icon ?? FileText}
+        title={pendingLink?.title ?? ""}
+        body={pendingLink?.pending ?? ""}
+        muted
+      />
+
+      <InfoSheet
+        visible={strictInfoOpen}
+        onClose={() => setStrictInfoOpen(false)}
+        icon={ShieldLock}
+        title="Strict mode"
+        muted
+        body={
+          "Once a session starts, TapIn can't be uninstalled or force-stopped until it ends. " +
+          "The way out is your card, not the app switcher. It will ask for a Device Admin grant " +
+          "alongside the permissions above."
+        }
+      >
+        <PrimaryButton label="Coming soon" onPress={() => {}} disabled />
+      </InfoSheet>
+
+      <InfoSheet
+        visible={emergencyInfoOpen}
+        onClose={() => setEmergencyInfoOpen(false)}
+        icon={ShieldAlert}
+        title="Emergency unlocks"
+        body={
+          `Lost your card? Hold the unlock on the session screen for ${EMERGENCY_HOLD_SECONDS} ` +
+          "seconds and every locked app opens straight away. The long hold is the safeguard, so " +
+          "an emergency unlock can never happen by reflex."
+        }
+      >
+        <View style={[styles.sheetStats, { borderColor: colors.border }]}>
+          <SheetStat
+            label="Remaining this month"
+            value={
+              emergencyLeft === null
+                ? "—"
+                : `${emergencyLeft} of ${EMERGENCY_UNLOCKS_PER_MONTH}`
+            }
+          />
+          <SheetStat label="Resets in" value={resetsIn === 1 ? "1 day" : `${resetsIn} days`} />
+          <SheetStat label="Refills on" value={emergencyResetLabel()} />
+        </View>
+      </InfoSheet>
     </Screen>
+  );
+}
+
+/** One "label ..... value" line inside the emergency sheet. */
+function SheetStat({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.sheetStatRow}>
+      <Text style={{ color: colors.textDim, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }}>{value}</Text>
+    </View>
   );
 }
 
@@ -305,8 +466,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: space(0.75),
+    paddingHorizontal: space(2),
     borderWidth: 1,
     borderRadius: 14,
+  },
+  // Title and description are a pair, so they are tuned as one. Android pads
+  // every Text with the font's own ascent and descent, which stacked up with
+  // the margin to leave a visible gap between the two lines; dropping that
+  // padding closes it without touching the 1.5 line-height inside each block.
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 20,
+    includeFontPadding: false,
+  },
+  rowDetail: {
+    fontSize: 12,
+    marginTop: 1,
+    lineHeight: 18,
+    includeFontPadding: false,
+  },
+  rowStatus: {
+    fontSize: 12,
+    fontWeight: "500",
   },
   systemCard: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -329,6 +511,17 @@ const styles = StyleSheet.create({
   },
   pendingIconBox: {
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  sheetStats: {
+    gap: space(0.75),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: space(1.25),
+  },
+  sheetStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1),
   },
   shieldBody: {
     gap: space(1.25),

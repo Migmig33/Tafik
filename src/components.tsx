@@ -3,13 +3,48 @@ import {
   Animated,
   Easing,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   View,
   ViewStyle,
 } from "react-native";
+import type { LucideIcon } from "lucide-react-native";
 import { radius, space, useTheme } from "./theme";
 import { Text } from "./typography";
+
+// The glyph's share of the square artwork. The asset carries a large safe-zone
+// margin, so anything drawing the mark has to crop to these bounds or it gets
+// padding it did not ask for.
+const GLYPH_WIDTH_RATIO = 0.22;
+const GLYPH_HEIGHT_RATIO = 0.381;
+
+/**
+ * The launcher icon's "t", cropped to the letter itself and tinted. Drawing it
+ * from the asset rather than redrawing it keeps every place the mark appears
+ * from drifting the next time the artwork changes.
+ */
+export function AppMark({ height, color }: { height: number; color: string }) {
+  const artwork = Math.round(height / GLYPH_HEIGHT_RATIO);
+  return (
+    <View
+      style={{
+        width: Math.round(artwork * GLYPH_WIDTH_RATIO),
+        height,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      <Image
+        source={require("./assets/adaptive-icon.png")}
+        style={{ width: artwork, height: artwork, tintColor: color }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
+    </View>
+  );
+}
 
 export function Screen({
   children,
@@ -129,8 +164,86 @@ export function Card({ children, style }: { children: React.ReactNode; style?: V
   );
 }
 
-/** A quiet concentric-ripple cue for "tap your card". Not skeuomorphic. */
-export function TapRipple({ active = true }: { active?: boolean }) {
+/**
+ * A centred sheet for explaining something a settings row has no room for.
+ * The backdrop, the Close button and the Android back button all dismiss it, so
+ * it can never become a dead end even when the content itself is inert.
+ */
+export function InfoSheet({
+  visible,
+  onClose,
+  icon: Icon,
+  title,
+  body,
+  muted,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  /** For a feature that has not shipped: no accent anywhere on the sheet. */
+  muted?: boolean;
+  /** Extra content between the body and the Close button. */
+  children?: React.ReactNode;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Tapping the dimmed area closes. The inner Pressable swallows taps so a
+          press on the card itself does not fall through to it. */}
+      <Pressable style={[styles.scrim, { backgroundColor: colors.scrim }]} onPress={onClose}>
+        <Pressable
+          style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => {}}
+        >
+          <View
+            style={[
+              styles.sheetIcon,
+              muted
+                ? {
+                    backgroundColor: colors.bg,
+                    borderColor: colors.border,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  }
+                : { backgroundColor: colors.accentWash },
+            ]}
+          >
+            <Icon size={20} color={muted ? colors.textDim : colors.accent} strokeWidth={2.1} />
+          </View>
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>{title}</Text>
+          <Text style={[styles.sheetBody, { color: colors.textDim }]}>{body}</Text>
+          {children ? <View style={styles.sheetChildren}>{children}</View> : null}
+          <View style={styles.sheetActions}>
+            <GhostButton label="Close" onPress={onClose} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+/**
+ * A quiet concentric-ripple cue for "tap your card". Not skeuomorphic.
+ * The defaults are the card-setup size; home overrides them because there the
+ * ripple is the screen's focal point rather than one step in a flow.
+ */
+export function TapRipple({
+  active = true,
+  size = 160,
+  coreSize = 64,
+  children,
+}: {
+  active?: boolean;
+  /** Footprint of the ripple, and the base the rings scale up from. */
+  size?: number;
+  /** Diameter of the outlined circle at the centre. */
+  coreSize?: number;
+  /** Optional mark drawn inside the outlined centre circle. */
+  children?: React.ReactNode;
+}) {
   const { colors } = useTheme();
   const a = useRef(new Animated.Value(0)).current;
 
@@ -160,41 +273,73 @@ export function TapRipple({ active = true }: { active?: boolean }) {
     };
   };
 
+  const ringSize = { width: size, height: size };
+
   return (
-    <View style={{ width: 160, height: 160, alignItems: "center", justifyContent: "center" }}>
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       {active && (
         <>
-          <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0)]} />
-          <Animated.View style={[styles.ring, { borderColor: colors.accent }, ring(0.5)]} />
+          <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0)]} />
+          <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0.5)]} />
         </>
       )}
       <View
         style={{
-          width: 64,
-          height: 64,
+          width: coreSize,
+          height: coreSize,
           borderRadius: 999,
           borderWidth: 1.5,
           borderColor: colors.accent,
+          alignItems: "center",
+          justifyContent: "center",
         }}
-      />
+      >
+        {children}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Sized to the letter itself: the glyph is 22.0% x 38.1% of the square
-  // artwork, so a 248px image puts the t at ~54.5 x 94.5px. overflow hides the
-  // transparent margin that would otherwise pad the layout around it.
-  markBox: {
-    width: 56,
-    height: 96,
+  scrim: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    padding: space(3),
   },
-  glyph: {
-    width: 248,
-    height: 248,
+  sheet: {
+    width: "100%",
+    maxWidth: 340,
+    alignItems: "center",
+    gap: space(1),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
+    padding: space(2.5),
+  },
+  sheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  sheetBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  // Stretched, because the sheet centres its children but block content and
+  // buttons want the full width.
+  sheetChildren: {
+    alignSelf: "stretch",
+    marginTop: space(0.5),
+  },
+  sheetActions: {
+    alignSelf: "stretch",
   },
   brandTitle: {
     fontSize: 30,
@@ -208,8 +353,6 @@ const styles = StyleSheet.create({
   },
   ring: {
     position: "absolute",
-    width: 160,
-    height: 160,
     borderRadius: 999,
     borderWidth: 1.5,
   },
@@ -393,19 +536,7 @@ export function BrandLockup({
           ],
         }}
       >
-        {/* The launcher icon itself, tinted to the accent so it reads in both
-            themes. Using the asset keeps the intro and the home-screen icon
-            from drifting apart the next time the artwork changes. The box crops
-            the artwork's safe-zone padding so the letter sits on its own bounds
-            and the spacing below stays honest. */}
-        <View style={styles.markBox}>
-          <Image
-            source={require("./assets/adaptive-icon.png")}
-            style={[styles.glyph, { tintColor: colors.accent }]}
-            resizeMode="contain"
-            accessibilityIgnoresInvertColors
-          />
-        </View>
+        <AppMark height={96} color={colors.accent} />
       </Animated.View>
 
       <Animated.View

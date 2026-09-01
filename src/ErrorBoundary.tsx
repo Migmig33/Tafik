@@ -36,7 +36,7 @@ function Fallback({ onRetry }: { onRetry: () => void }) {
         <View style={{ height: space(1.5) }} />
         <Body dim>
           TapIn hit an unexpected error. If a focus session was running it is still
-          running — your apps are still locked, and your card will still end it.
+          running. Your apps are still locked, and your card will still end it.
         </Body>
       </View>
       <PrimaryButton label="Try again" onPress={onRetry} />
