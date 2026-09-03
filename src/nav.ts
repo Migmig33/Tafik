@@ -1,6 +1,7 @@
 export type ScreenName =
   | "onboarding"
   | "home"
+  | "studin"
   | "insights"
   | "blocklist"
   | "settings"

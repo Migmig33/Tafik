@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -90,6 +91,9 @@ class ForegroundBlockService : Service() {
   private var overlay: View? = null
   private var shieldedPackage: String? = null
   private var lastForegroundPackage: String? = null
+  private var unshieldCandidate: String? = null
+  private var unshieldCandidateSince = 0L
+  private var notificationStateKey: String? = null
   private val poppinsRegular: Typeface by lazy {
     loadTypeface("fonts/Poppins_400Regular.ttf", Typeface.NORMAL)
   }
@@ -99,17 +103,57 @@ class ForegroundBlockService : Service() {
 
   private val monitor = object : Runnable {
     override fun run() {
-      if (!BlockingPreferences.isActive(this@ForegroundBlockService)) {
+      val session = BlockingPreferences.sessionState(this@ForegroundBlockService)
+      if (!session.active) {
         stopSelf()
         return
       }
-
+      refreshNotification(session)
       val foreground = currentForegroundPackage()
+
+      // Break releases restrictions, while this service remains alive to
+      // reapply them when the next Study begins. Foreground tracking continues
+      // here so an app opened early in a long Break is still known at 00:00.
+      if (session.mode == BlockingPreferences.MODE_STUDIN &&
+        session.phase == BlockingPreferences.PHASE_BREAK
+      ) {
+        clearUnshieldCandidate()
+        hideShield()
+        handler.postDelayed(this, POLL_INTERVAL_MS)
+        return
+      }
+
       val shouldShield = foreground != null &&
         foreground != packageName &&
         BlockingPreferences.blocklist(this@ForegroundBlockService).contains(foreground)
 
-      if (shouldShield) showShield(foreground!!) else hideShield()
+      when {
+        shouldShield -> {
+          clearUnshieldCandidate()
+          showShield(foreground!!)
+        }
+        overlay == null -> clearUnshieldCandidate()
+        foreground == packageName -> {
+          // TapIn must become usable immediately so the user can scan to end
+          // the session. Other app transitions are confirmed below.
+          clearUnshieldCandidate()
+          hideShield()
+        }
+        foreground == null -> {
+          // An inconclusive UsageStats read must never create an unlock gap.
+          clearUnshieldCandidate()
+        }
+        unshieldCandidate != foreground -> {
+          // Recents briefly reports the launcher/System UI as foreground. Keep
+          // the existing window attached until that transition proves stable.
+          unshieldCandidate = foreground
+          unshieldCandidateSince = SystemClock.elapsedRealtime()
+        }
+        SystemClock.elapsedRealtime() - unshieldCandidateSince >= EXIT_CONFIRMATION_MS -> {
+          clearUnshieldCandidate()
+          hideShield()
+        }
+      }
       handler.postDelayed(this, POLL_INTERVAL_MS)
     }
   }
@@ -121,7 +165,9 @@ class ForegroundBlockService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    startForeground(NOTIFICATION_ID, buildNotification())
+    val session = BlockingPreferences.sessionState(this)
+    startForeground(NOTIFICATION_ID, buildNotification(session))
+    notificationStateKey = notificationKey(session)
     handler.removeCallbacks(monitor)
     handler.post(monitor)
     return START_STICKY
@@ -154,6 +200,18 @@ class ForegroundBlockService : Service() {
       }
     }
     if (latestPackage != null) lastForegroundPackage = latestPackage
+    if (lastForegroundPackage == null) {
+      // Recover after Android restarts the sticky service while an app has
+      // already been open longer than the short event lookback window.
+      lastForegroundPackage = usageStats.queryUsageStats(
+        UsageStatsManager.INTERVAL_DAILY,
+        end - INITIAL_USAGE_LOOKBACK_MS,
+        end
+      )
+        .orEmpty()
+        .maxByOrNull { it.lastTimeUsed }
+        ?.packageName
+    }
     return lastForegroundPackage
   }
 
@@ -174,6 +232,9 @@ class ForegroundBlockService : Service() {
       packageManager.getApplicationIcon(packageName)
     }
     val palette = overlayPalette(BlockingPreferences.isDarkAppearance(this))
+    val session = BlockingPreferences.sessionState(this)
+    val studInStudy = session.mode == BlockingPreferences.MODE_STUDIN &&
+      session.phase == BlockingPreferences.PHASE_STUDY
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
@@ -229,7 +290,7 @@ class ForegroundBlockService : Service() {
       setImageDrawable(appIcon)
       scaleType = ImageView.ScaleType.FIT_CENTER
       contentDescription = "$appName icon"
-    }, FrameLayout.LayoutParams(dp(74), dp(74), Gravity.CENTER))
+    }, FrameLayout.LayoutParams(dp(82), dp(82), Gravity.CENTER))
     iconShell.addView(
       LockBadgeView(this, palette.accent, palette.onAccent).apply {
         contentDescription = "Locked"
@@ -246,7 +307,7 @@ class ForegroundBlockService : Service() {
       }
     )
 
-    card.addView(makeText("$appName is paused", 26f, palette.text, semibold = true).apply {
+    card.addView(makeText("$appName is blocked", 26f, palette.text, semibold = true).apply {
       gravity = Gravity.CENTER
     }, LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
@@ -256,7 +317,7 @@ class ForegroundBlockService : Service() {
     // The user's own reason for locking this app carries further than ours,
     // so it takes this line when they have written one.
     val shieldMessage = BlockingPreferences.shieldMessage(this).ifBlank {
-      "This app is locked by TapIn while your focus session is active."
+      "This app will close."
     }
     card.addView(makeText(
       shieldMessage,
@@ -276,7 +337,7 @@ class ForegroundBlockService : Service() {
       setPadding(dp(16), dp(16), dp(16), dp(16))
       background = roundedBackground(palette.accentWash, 16)
     }
-    instruction.addView(makeText("NFC", 11f, palette.onAccent, semibold = true).apply {
+    instruction.addView(makeText(if (studInStudy) "LOCK" else "NFC", 11f, palette.onAccent, semibold = true).apply {
       gravity = Gravity.CENTER
       background = roundedBackground(palette.accent, 100)
     }, LinearLayout.LayoutParams(dp(46), dp(46)))
@@ -284,8 +345,21 @@ class ForegroundBlockService : Service() {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(14), 0, 0, 0)
     }
-    instructionCopy.addView(makeText("Ready to unlock?", 14f, palette.text, semibold = true))
-    instructionCopy.addView(makeText("Open TapIn, then tap your NFC card.", 13f, palette.textDim).apply {
+    instructionCopy.addView(makeText(
+      if (studInStudy) "StudIn is running" else "Ready to unlock?",
+      14f,
+      palette.text,
+      semibold = true
+    ))
+    instructionCopy.addView(makeText(
+      if (studInStudy) {
+        "This app stays blocked until Study reaches 00:00."
+      } else {
+        "Open TapIn, then tap your NFC card."
+      },
+      13f,
+      palette.textDim
+    ).apply {
       setLineSpacing(dp(2).toFloat(), 1f)
     }, LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
@@ -302,7 +376,12 @@ class ForegroundBlockService : Service() {
 
     val buttonFill = roundedBackground(palette.accent, 100)
     val rippleColor = (palette.onAccent and 0x00FFFFFF) or (40 shl 24)
-    card.addView(makeText("Return to TapIn", 16f, palette.onAccent, semibold = true).apply {
+    card.addView(makeText(
+      if (studInStudy) "Return to StudIn" else "Return to TapIn",
+      16f,
+      palette.onAccent,
+      semibold = true
+    ).apply {
       gravity = Gravity.CENTER
       minHeight = dp(56)
       isClickable = true
@@ -318,7 +397,15 @@ class ForegroundBlockService : Service() {
       LinearLayout.LayoutParams.MATCH_PARENT,
       LinearLayout.LayoutParams.WRAP_CONTENT
     ))
-    center.addView(makeText("Your focus session is still running", 12f, palette.textDim).apply {
+    center.addView(makeText(
+      if (studInStudy) {
+        "Study ${session.currentRound} of ${session.totalRounds} is still running"
+      } else {
+        "Your focus session is still running"
+      },
+      12f,
+      palette.textDim
+    ).apply {
       gravity = Gravity.CENTER
     }, LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
@@ -428,6 +515,11 @@ class ForegroundBlockService : Service() {
     shieldedPackage = null
   }
 
+  private fun clearUnshieldCandidate() {
+    unshieldCandidate = null
+    unshieldCandidateSince = 0L
+  }
+
   private fun returnToTapIn() {
     hideShield()
     packageManager.getLaunchIntentForPackage(packageName)?.let {
@@ -449,25 +541,60 @@ class ForegroundBlockService : Service() {
     getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
   }
 
-  private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-    .setContentTitle("TapIn is locking selected apps")
-    .setContentText("Tap your card in TapIn to end the session.")
-    .setSmallIcon(applicationInfo.icon)
-    .setOngoing(true)
-    .setContentIntent(
-      PendingIntent.getActivity(
-        this,
-        0,
-        packageManager.getLaunchIntentForPackage(packageName),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+  private fun buildNotification(session: BlockingSessionState): android.app.Notification {
+    val title: String
+    val detail: String
+    when {
+      session.mode == BlockingPreferences.MODE_STUDIN &&
+        session.phase == BlockingPreferences.PHASE_STUDY -> {
+        title = "StudIn study ${session.currentRound} of ${session.totalRounds}"
+        detail = "Selected apps stay blocked until this Study ends."
+      }
+      session.mode == BlockingPreferences.MODE_STUDIN -> {
+        title = "StudIn break after round ${session.currentRound}"
+        detail = "Apps are available. The next Study starts automatically."
+      }
+      else -> {
+        title = "TapIn is locking selected apps"
+        detail = "Tap your card in TapIn to end the session."
+      }
+    }
+
+    return NotificationCompat.Builder(this, CHANNEL_ID)
+      .setContentTitle(title)
+      .setContentText(detail)
+      .setSmallIcon(applicationInfo.icon)
+      .setOngoing(true)
+      .setContentIntent(
+        PendingIntent.getActivity(
+          this,
+          0,
+          packageManager.getLaunchIntentForPackage(packageName),
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
       )
+      .build()
+  }
+
+  private fun refreshNotification(session: BlockingSessionState) {
+    val key = notificationKey(session)
+    if (notificationStateKey == key) return
+    getSystemService(NotificationManager::class.java).notify(
+      NOTIFICATION_ID,
+      buildNotification(session)
     )
-    .build()
+    notificationStateKey = key
+  }
+
+  private fun notificationKey(session: BlockingSessionState): String =
+    "${session.mode}:${session.phase}:${session.currentRound}:${session.totalRounds}"
 
   companion object {
     private const val CHANNEL_ID = "tapped_in_focus"
     private const val NOTIFICATION_ID = 3107
     private const val POLL_INTERVAL_MS = 500L
     private const val EVENT_LOOKBACK_MS = 3000L
+    private const val INITIAL_USAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000L
+    private const val EXIT_CONFIRMATION_MS = 1500L
   }
 }

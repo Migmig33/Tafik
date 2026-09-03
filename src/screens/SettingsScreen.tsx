@@ -1,30 +1,48 @@
-import { useCallback, useEffect, useState } from "react";
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  AppState,
+  Easing,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import Accessibility from "lucide-react-native/icons/accessibility";
 import Bell from "lucide-react-native/icons/bell";
+import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import FileText from "lucide-react-native/icons/file-text";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Layers from "lucide-react-native/icons/layers";
 import Lock from "lucide-react-native/icons/lock";
+import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
 import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
 import Monitor from "lucide-react-native/icons/monitor";
 import Moon from "lucide-react-native/icons/moon";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
-import ShieldLock from "lucide-react-native/icons/shield-lock";
 import Star from "lucide-react-native/icons/star";
 import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
-import { hasOverlayPermission, hasUsageAccess } from "../blocking";
-import { Body, InfoSheet, PrimaryButton, Screen, Title } from "../components";
+import {
+  hasAccessibilityAccess,
+  hasOverlayPermission,
+  hasUsageAccess,
+} from "../blocking";
+import { Body, InfoSheet, Screen, Title } from "../components";
 import { usePremium } from "../premium";
 import {
   EMERGENCY_HOLD_SECONDS,
   EMERGENCY_UNLOCKS_PER_MONTH,
   emergencyDaysUntilReset,
   emergencyResetLabel,
+  type FocusMode,
   getEmergencyUnlocksLeft,
+  getFocusMode,
   getShieldMessage,
+  setFocusMode,
   setShieldMessage,
   SHIELD_MESSAGE_MAX_LENGTH,
 } from "../store";
@@ -69,34 +87,49 @@ const aboutLinks: AboutLink[] = [
 
 /** What the shield says when the user has not written their own line. */
 const DEFAULT_SHIELD_MESSAGE =
-  "This app is locked by TapIn while your focus session is active.";
+  "This app will close.";
 
-type AccessState = { usage: boolean; overlay: boolean };
+type AccessState = { usage: boolean; accessibility: boolean; overlay: boolean };
 
 export default function SettingsScreen({
   onUnlock,
   onManageCards,
   onOpenPrivacy,
+  onModeChange,
 }: {
   onUnlock?: () => void;
   onManageCards: () => void;
   onOpenPrivacy: () => void;
+  /** Lets the shell repaint the tab bar's centre action as the switch slides,
+      rather than only once the user navigates away from Settings. */
+  onModeChange?: (mode: FocusMode) => void;
 }) {
   const { colors, mode, setMode } = useTheme();
   const { isPremium, ready: premiumReady } = usePremium();
-  const [access, setAccess] = useState<AccessState>({ usage: false, overlay: false });
+  const [access, setAccess] = useState<AccessState>({
+    usage: false,
+    accessibility: false,
+    overlay: false,
+  });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
   const [shieldDraft, setShieldDraft] = useState("");
+  const [focusMode, setFocusModeState] = useState<FocusMode>("tapin");
   // The row only has room for a summary, so the rest of the explanation lives
   // in a sheet the row opens.
-  const [strictInfoOpen, setStrictInfoOpen] = useState(false);
   const [emergencyInfoOpen, setEmergencyInfoOpen] = useState(false);
   // Which outbound link the user pressed before it had somewhere to go.
   const [pendingLink, setPendingLink] = useState<AboutLink | null>(null);
 
   useEffect(() => {
     getShieldMessage().then(setShieldDraft);
+    getFocusMode().then(setFocusModeState);
   }, []);
+
+  const chooseMode = (next: FocusMode) => {
+    setFocusModeState(next);
+    onModeChange?.(next);
+    void setFocusMode(next);
+  };
 
   // Saved on the way out of the field rather than on every keystroke: each save
   // crosses the native bridge, and the shield only needs the finished sentence.
@@ -105,12 +138,13 @@ export default function SettingsScreen({
   };
 
   const refresh = useCallback(async () => {
-    const [usage, overlay, left] = await Promise.all([
+    const [usage, accessibility, overlay, left] = await Promise.all([
       hasUsageAccess(),
+      hasAccessibilityAccess(),
       hasOverlayPermission(),
       getEmergencyUnlocksLeft(),
     ]);
-    setAccess({ usage, overlay });
+    setAccess({ usage, accessibility, overlay });
     setEmergencyLeft(left);
   }, []);
 
@@ -128,6 +162,7 @@ export default function SettingsScreen({
     { value: "light", label: "Light", icon: Sun },
     { value: "dark", label: "Dark", icon: Moon },
   ];
+  const studInOn = focusMode === "studin";
   const rows: {
     title: string;
     detail: string;
@@ -141,6 +176,13 @@ export default function SettingsScreen({
       status: access.usage ? "Allowed" : "Required",
       icon: ShieldCheck,
       onPress: () => void Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS"),
+    },
+    {
+      title: "Accessibility",
+      detail: "Immediate blocked-app redirect",
+      status: access.accessibility ? "Allowed" : "Required",
+      icon: Accessibility,
+      onPress: () => void Linking.sendIntent("android.settings.ACCESSIBILITY_SETTINGS"),
     },
     {
       title: "Display over apps",
@@ -197,6 +239,59 @@ export default function SettingsScreen({
             );
           })}
         </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>MODE</Text>
+        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: studInOn }}
+            accessibilityLabel="StudIn mode"
+            onPress={() => chooseMode(studInOn ? "tapin" : "studin")}
+            style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
+          >
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <BookOpenCheck size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>StudIn</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                Timed study rounds with automatic breaks.
+              </Text>
+            </View>
+            <ModeSwitch on={studInOn} />
+          </Pressable>
+
+          {/* Announced, not offered. It carries no switch so the row cannot
+              promise a mode that is not built yet. */}
+          <View
+            style={[
+              styles.row,
+              { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.iconBox,
+                styles.pendingIconBox,
+                { backgroundColor: colors.bg, borderColor: colors.border },
+              ]}
+            >
+              <LockKeyhole size={20} color={colors.textDim} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.textDim }]}>LockIn</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                A stricter session that resists being switched off.
+              </Text>
+            </View>
+            <Text style={[styles.rowStatus, { color: colors.textDim }]}>Coming soon</Text>
+          </View>
+        </View>
+        <Text style={[styles.modeNote, { color: colors.textDim }]}>
+          {studInOn
+            ? "Your card starts a timed study cycle. Set the schedule on home, and end a cycle early by tapping your card during a break."
+            : "Your card starts an open session that stays locked until you tap the card again."}
+        </Text>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SHIELD MESSAGE</Text>
         {!premiumReady ? null : isPremium ? (
@@ -289,33 +384,6 @@ export default function SettingsScreen({
               </Pressable>
             );
           })}
-
-          {/* Still unavailable, so everything stays textDim — but the row is
-              tappable now, because the short description alone does not explain
-              what strict mode will do. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Strict mode, coming soon"
-            onPress={() => setStrictInfoOpen(true)}
-            style={({ pressed }) => [
-              styles.row,
-              { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-              { opacity: pressed ? 0.68 : 1 },
-            ]}
-          >
-            <View
-              style={[styles.iconBox, styles.pendingIconBox, { backgroundColor: colors.bg, borderColor: colors.border }]}
-            >
-              <ShieldLock size={20} color={colors.textDim} strokeWidth={2.1} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.textDim }]}>Strict mode</Text>
-              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                Can&apos;t uninstall or force-stop TapIn.
-              </Text>
-            </View>
-            <Text style={[styles.rowStatus, { color: colors.textDim }]}>Coming soon</Text>
-          </Pressable>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>EMERGENCY ACCESS</Text>
@@ -392,21 +460,6 @@ export default function SettingsScreen({
       />
 
       <InfoSheet
-        visible={strictInfoOpen}
-        onClose={() => setStrictInfoOpen(false)}
-        icon={ShieldLock}
-        title="Strict mode"
-        muted
-        body={
-          "Once a session starts, TapIn can't be uninstalled or force-stopped until it ends. " +
-          "The way out is your card, not the app switcher. It will ask for a Device Admin grant " +
-          "alongside the permissions above."
-        }
-      >
-        <PrimaryButton label="Coming soon" onPress={() => {}} disabled />
-      </InfoSheet>
-
-      <InfoSheet
         visible={emergencyInfoOpen}
         onClose={() => setEmergencyInfoOpen(false)}
         icon={ShieldAlert}
@@ -431,6 +484,53 @@ export default function SettingsScreen({
         </View>
       </InfoSheet>
     </Screen>
+  );
+}
+
+const SWITCH_WIDTH = 46;
+const SWITCH_HEIGHT = 28;
+const SWITCH_PADDING = 3;
+const SWITCH_KNOB = SWITCH_HEIGHT - SWITCH_PADDING * 2;
+
+/**
+ * The mode switch. It slides rather than simply recolouring, because the two
+ * modes are exclusive: seeing the knob travel is what says the other one just
+ * turned off. Colour is animated alongside the position, so this drives layout
+ * values and cannot run on the native driver.
+ */
+function ModeSwitch({ on }: { on: boolean }) {
+  const { colors } = useTheme();
+  const progress = useRef(new Animated.Value(on ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: on ? 1 : 0,
+      duration: 190,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [on, progress]);
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SWITCH_WIDTH - SWITCH_KNOB - SWITCH_PADDING * 2],
+  });
+  const trackColor = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.border, colors.accent],
+  });
+  // The knob has to stay legible on both track colours, in both themes.
+  const knobColor = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.textDim, colors.onAccent],
+  });
+
+  return (
+    <Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}>
+      <Animated.View
+        style={[styles.switchKnob, { backgroundColor: knobColor, transform: [{ translateX }] }]}
+      />
+    </Animated.View>
   );
 }
 
@@ -511,6 +611,23 @@ const styles = StyleSheet.create({
   },
   pendingIconBox: {
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  switchTrack: {
+    width: SWITCH_WIDTH,
+    height: SWITCH_HEIGHT,
+    borderRadius: SWITCH_HEIGHT / 2,
+    padding: SWITCH_PADDING,
+    justifyContent: "center",
+  },
+  switchKnob: {
+    width: SWITCH_KNOB,
+    height: SWITCH_KNOB,
+    borderRadius: SWITCH_KNOB / 2,
+  },
+  modeNote: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: space(1),
   },
   sheetStats: {
     gap: space(0.75),

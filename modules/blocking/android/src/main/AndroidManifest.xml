@@ -6,6 +6,20 @@
 
   <application>
     <service
+      android:name="expo.modules.blocking.AccessibilityBlockService"
+      android:description="@string/tapin_accessibility_description"
+      android:exported="true"
+      android:label="@string/tapin_accessibility_label"
+      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/tapin_accessibility_service" />
+    </service>
+
+    <service
       android:name="expo.modules.blocking.ForegroundBlockService"
       android:exported="false"
       android:foregroundServiceType="specialUse">

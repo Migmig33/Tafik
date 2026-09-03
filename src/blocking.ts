@@ -4,15 +4,37 @@ export type InstalledApp = { name: string; pkg: string; icon: string };
 type InstalledAppSummary = Omit<InstalledApp, "icon">;
 export type AppScreenTime = { name: string; pkg: string; seconds: number };
 export type ScreenTimeDay = { date: string; seconds: number; apps: AppScreenTime[] };
+export type BlockingSessionState = {
+  active: boolean;
+  mode: "none" | "tapin" | "studin";
+  phase: "study" | "break" | null;
+  currentRound: number;
+  totalRounds: number;
+  phaseStartedAt: number;
+  phaseEndsAt: number;
+  sessionStartedAt: number;
+  studyDurationSeconds: number;
+  breakDurationSeconds: number;
+};
+export type StudInResult = { focusSeconds: number; completed: boolean };
 
 type BlockingNativeModule = {
   startSession(blocklist: string[]): Promise<void>;
+  startStudInSession?(
+    blocklist: string[],
+    studyDurationSeconds: number,
+    breakDurationSeconds: number,
+    rounds: number
+  ): Promise<void>;
   endSession(): Promise<void>;
   isSessionActive(): Promise<boolean>;
+  getSessionState?(): Promise<BlockingSessionState>;
+  consumeStudInResult?(): Promise<StudInResult>;
   setAppearanceMode?(mode: "system" | "light" | "dark"): Promise<void>;
   setShieldMessage?(message: string): Promise<void>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
+  hasAccessibilityAccess?(): Promise<boolean>;
   getScreenTimeToday(): Promise<number>;
   getAppScreenTimeToday(): Promise<string>;
   getScreenTimeInsights(): Promise<string>;
@@ -36,12 +58,80 @@ export async function startBlockingSession(blocklist: string[]): Promise<void> {
   await requireBlockingModule().startSession(blocklist);
 }
 
+export async function startStudInBlockingSession(
+  blocklist: string[],
+  studyMinutes: number,
+  breakMinutes: number,
+  rounds: number
+): Promise<void> {
+  if (blocklist.length === 0) throw new Error("Choose at least one app to block first.");
+  const module = requireBlockingModule();
+  if (typeof module.startStudInSession !== "function") {
+    throw new Error("StudIn needs a newer native build of TapIn.");
+  }
+  await module.startStudInSession(
+    blocklist,
+    Math.round(studyMinutes * 60),
+    Math.round(breakMinutes * 60),
+    Math.round(rounds)
+  );
+}
+
+export function hasStudInSessionSupport(): boolean {
+  return typeof native?.startStudInSession === "function" &&
+    typeof native?.getSessionState === "function";
+}
+
 export async function endBlockingSession(): Promise<void> {
   await requireBlockingModule().endSession();
 }
 
 export async function isBlockingSessionActive(): Promise<boolean> {
   return native ? native.isSessionActive() : false;
+}
+
+const INACTIVE_SESSION: BlockingSessionState = {
+  active: false,
+  mode: "none",
+  phase: null,
+  currentRound: 0,
+  totalRounds: 0,
+  phaseStartedAt: 0,
+  phaseEndsAt: 0,
+  sessionStartedAt: 0,
+  studyDurationSeconds: 0,
+  breakDurationSeconds: 0,
+};
+
+export async function getBlockingSessionState(): Promise<BlockingSessionState> {
+  if (!native) return INACTIVE_SESSION;
+  if (typeof native.getSessionState !== "function") {
+    const active = await native.isSessionActive();
+    return active ? { ...INACTIVE_SESSION, active: true, mode: "tapin" } : INACTIVE_SESSION;
+  }
+
+  const state = await native.getSessionState();
+  return {
+    active: Boolean(state.active),
+    mode: state.mode === "tapin" || state.mode === "studin" ? state.mode : "none",
+    phase: state.phase === "study" || state.phase === "break" ? state.phase : null,
+    currentRound: Math.max(0, Math.round(Number(state.currentRound) || 0)),
+    totalRounds: Math.max(0, Math.round(Number(state.totalRounds) || 0)),
+    phaseStartedAt: Math.max(0, Number(state.phaseStartedAt) || 0),
+    phaseEndsAt: Math.max(0, Number(state.phaseEndsAt) || 0),
+    sessionStartedAt: Math.max(0, Number(state.sessionStartedAt) || 0),
+    studyDurationSeconds: Math.max(0, Math.round(Number(state.studyDurationSeconds) || 0)),
+    breakDurationSeconds: Math.max(0, Math.round(Number(state.breakDurationSeconds) || 0)),
+  };
+}
+
+export async function consumeStudInResult(): Promise<StudInResult> {
+  if (!native?.consumeStudInResult) return { focusSeconds: 0, completed: false };
+  const result = await native.consumeStudInResult();
+  return {
+    focusSeconds: Math.max(0, Math.round(Number(result.focusSeconds) || 0)),
+    completed: Boolean(result.completed),
+  };
 }
 
 export async function syncBlockingAppearance(mode: "system" | "light" | "dark"): Promise<void> {
@@ -66,6 +156,14 @@ export async function hasUsageAccess(): Promise<boolean> {
 
 export async function hasOverlayPermission(): Promise<boolean> {
   return native ? native.hasOverlayPermission() : false;
+}
+
+export async function hasAccessibilityAccess(): Promise<boolean> {
+  return native?.hasAccessibilityAccess ? native.hasAccessibilityAccess() : false;
+}
+
+export function hasAccessibilityServiceSupport(): boolean {
+  return typeof native?.hasAccessibilityAccess === "function";
 }
 
 export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {

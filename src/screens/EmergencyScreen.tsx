@@ -21,10 +21,12 @@ import { Text } from "../typography";
 export default function EmergencyScreen({
   nav,
   active,
+  sessionMode = "tapin",
   onUnlock,
 }: {
   nav: Nav;
   active: boolean;
+  sessionMode?: "tapin" | "studin";
   /** Ends the session and spends one unlock. Resolves with the number left. */
   onUnlock: () => Promise<number>;
 }) {
@@ -53,17 +55,41 @@ export default function EmergencyScreen({
 
   const exhausted = left !== null && left <= 0;
   const resetsOn = emergencyResetLabel();
+  // Unlocking ends the session, which clears the caller's StudIn state before
+  // this screen re-renders. Latch the mode it was opened for, so the copy that
+  // follows still speaks about the session the user actually exited.
+  const [studIn] = useState(sessionMode === "studin");
+  const returnScreen = studIn ? "studin" : "home";
+
+  const confirmUnlock = () => {
+    if (!studIn) {
+      void unlock();
+      return;
+    }
+    Alert.alert(
+      "Use Emergency Exit?",
+      "This will end your StudIn session before the Study timer is complete.",
+      [
+        { text: "Keep studying", style: "cancel" },
+        { text: "Emergency exit", style: "destructive", onPress: () => void unlock() },
+      ]
+    );
+  };
 
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
-        <Title>{done ? "Apps unblocked" : "Card lost?"}</Title>
+        <Title>{done ? "Apps unblocked" : studIn ? "Emergency Exit" : "Card lost?"}</Title>
         <View style={{ height: space(1) }} />
         <Body dim>
           {done
-            ? "Your session was ended without the card. Register a replacement card so the next one is a normal tap."
-            : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
-              `${EMERGENCY_HOLD_SECONDS} seconds and every blocked app unlocks straight away.`}
+            ? studIn
+              ? "Your StudIn session ended early and its blocked apps are available again."
+              : "Your session was ended without the card. Register a replacement card so the next one is a normal tap."
+            : studIn
+              ? "This will end your StudIn session before your Study timer is complete. Use this only when you need to leave early."
+              : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
+                `${EMERGENCY_HOLD_SECONDS} seconds and every blocked app unlocks straight away.`}
         </Body>
 
         <View style={{ height: space(2.5) }} />
@@ -93,10 +119,14 @@ export default function EmergencyScreen({
         <View style={{ flex: 1, minHeight: space(3) }} />
 
         {done ? (
-          <>
-            <PrimaryButton label="Register a new card" onPress={() => nav("cardSetup")} />
-            <GhostButton label="Back to home" onPress={() => nav("home")} />
-          </>
+          studIn ? (
+            <PrimaryButton label="Back to home" onPress={() => nav("home")} />
+          ) : (
+            <>
+              <PrimaryButton label="Register a new card" onPress={() => nav("cardSetup")} />
+              <GhostButton label="Back to home" onPress={() => nav("home")} />
+            </>
+          )
         ) : (
           <>
             {!active && (
@@ -106,12 +136,19 @@ export default function EmergencyScreen({
               </>
             )}
             <HoldButton
-              label={`Hold ${EMERGENCY_HOLD_SECONDS}s to unlock`}
+              label={
+                studIn
+                  ? `Hold ${EMERGENCY_HOLD_SECONDS}s for Emergency Exit`
+                  : `Hold ${EMERGENCY_HOLD_SECONDS}s to unlock`
+              }
               seconds={EMERGENCY_HOLD_SECONDS}
-              onComplete={unlock}
+              onComplete={confirmUnlock}
               disabled={exhausted || !active || left === null || busy}
             />
-            <GhostButton label="Cancel" onPress={() => nav("home")} />
+            <GhostButton
+              label={studIn ? "Keep studying" : "Cancel"}
+              onPress={() => nav(returnScreen)}
+            />
           </>
         )}
       </ScrollView>

@@ -17,6 +17,8 @@ const KEYS = {
   blocklist: "blocklist", // array of package names
   sessions: "sessions", // array of completed session records
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
+  studInConfig: "studInConfig", // study minutes, break minutes, and rounds
+  focusMode: "focusMode", // "tapin" or "studin"
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
   premium: "premium", // "1" once the one-time unlock is owned
   shieldMessage: "shieldMessage", // the user's own words on the block overlay
@@ -141,6 +143,62 @@ export async function setActiveSessionStartedAt(timestamp: number): Promise<void
 
 export async function clearActiveSessionStartedAt(): Promise<void> {
   await AsyncStorage.removeItem(KEYS.activeSessionStartedAt);
+}
+
+/**
+ * Which session a card tap starts. "tapin" is the standard open-ended session
+ * that runs until a card ends it, and is what the app does when no extra mode
+ * is switched on. "studin" is the timed study/break cycle. LockIn, the strict
+ * variant, is announced in Settings but has no value here until it ships.
+ */
+export type FocusMode = "tapin" | "studin";
+
+export async function getFocusMode(): Promise<FocusMode> {
+  return (await AsyncStorage.getItem(KEYS.focusMode)) === "studin" ? "studin" : "tapin";
+}
+
+export async function setFocusMode(mode: FocusMode): Promise<void> {
+  await AsyncStorage.setItem(KEYS.focusMode, mode);
+}
+
+export type StudInConfig = {
+  studyMinutes: number;
+  breakMinutes: number;
+  rounds: number;
+};
+
+export const DEFAULT_STUDIN_CONFIG: StudInConfig = {
+  studyMinutes: 25,
+  breakMinutes: 5,
+  rounds: 4,
+};
+
+function normalizeStudInConfig(value: Partial<StudInConfig>): StudInConfig {
+  const whole = (input: unknown, fallback: number, min: number, max: number) => {
+    const parsed = typeof input === "number" ? input : Number(input);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
+  };
+  return {
+    studyMinutes: whole(value.studyMinutes, DEFAULT_STUDIN_CONFIG.studyMinutes, 1, 180),
+    breakMinutes: whole(value.breakMinutes, DEFAULT_STUDIN_CONFIG.breakMinutes, 1, 60),
+    rounds: whole(value.rounds, DEFAULT_STUDIN_CONFIG.rounds, 1, 12),
+  };
+}
+
+export async function getStudInConfig(): Promise<StudInConfig> {
+  const raw = await AsyncStorage.getItem(KEYS.studInConfig);
+  if (!raw) return DEFAULT_STUDIN_CONFIG;
+  try {
+    return normalizeStudInConfig(JSON.parse(raw) as Partial<StudInConfig>);
+  } catch {
+    return DEFAULT_STUDIN_CONFIG;
+  }
+}
+
+export async function setStudInConfig(config: StudInConfig): Promise<StudInConfig> {
+  const normalized = normalizeStudInConfig(config);
+  await AsyncStorage.setItem(KEYS.studInConfig, JSON.stringify(normalized));
+  return normalized;
 }
 
 // --- Session history -------------------------------------------------------
@@ -298,7 +356,7 @@ export async function setWelcomeSeen(seen: boolean): Promise<void> {
  * v2 ships fully unlocked because insights history, custom shield copy, and
  * multiple cards do not justify a paid tier on their own. The gates stay
  * intentionally dormant behind this override; billing is deferred until a
- * substantial paid feature, such as user-requested strict mode, exists.
+ * substantial paid feature exists.
  */
 const PREMIUM_OVERRIDE: boolean | null = true;
 

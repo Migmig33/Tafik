@@ -486,10 +486,13 @@ export function HoldButton({
 export function BrandLockup({
   durationMs,
   onDone,
+  showTagline = true,
 }: {
   /** Total length of the whole lockup, matched to the whoosh clip. */
   durationMs: number;
   onDone?: () => void;
+  /** Keep shared launch lockups unchanged while allowing tighter compositions. */
+  showTagline?: boolean;
 }) {
   const { colors } = useTheme();
   const mark = useRef(new Animated.Value(0)).current;
@@ -550,8 +553,85 @@ export function BrandLockup({
         }}
       >
         <Text style={[styles.brandTitle, { color: colors.text }]}>TapIn</Text>
-        <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap and lock in</Text>
+        {showTagline ? (
+          <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap and lock in</Text>
+        ) : null}
       </Animated.View>
     </>
+  );
+}
+/** Fade the old label away, then let the replacement settle down into place. */
+export function AnimatedSwapText({
+  value,
+  children,
+}: {
+  value: string;
+  children: (displayedValue: string) => React.ReactNode;
+}) {
+  const [displayed, setDisplayed] = useState(value);
+  const current = useRef(value);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // If a very quick state reversal cancels the outgoing label before it was
+    // swapped, return that still-correct label to a fully visible resting state.
+    if (value === current.current) {
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+      opacity.setValue(1);
+      translateY.setValue(0);
+      return;
+    }
+    let cancelled = false;
+
+    opacity.stopAnimation();
+    translateY.stopAnimation();
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 120,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 6,
+        duration: 120,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished || cancelled) return;
+      current.current = value;
+      setDisplayed(value);
+      opacity.setValue(0);
+      translateY.setValue(-8);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    return () => {
+      cancelled = true;
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+    };
+  }, [opacity, translateY, value]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children(displayed)}
+    </Animated.View>
   );
 }

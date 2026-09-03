@@ -9,7 +9,7 @@ import { Screen, Title } from "../components";
 import { radius, space, useTheme } from "../theme";
 import { Text } from "../typography";
 
-const EFFECTIVE_DATE = "September 1, 2026";
+const EFFECTIVE_DATE = "September 4, 2026";
 
 type PolicySectionProps = {
   number: string;
@@ -97,10 +97,13 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
           <DataCard icon={Smartphone} title="App activity and screen time">
             With Android Usage Access, TapIn can read which app is in the foreground, foreground-app
             events, and how long apps were used. During a focus session, the foreground service checks
-            the current app so it can shield an app you selected. Insights reads up to 14 days of
-            Android usage history to calculate daily totals, app-by-app time, charts, and trends. Those
-            Android usage records are read when needed and are not uploaded or copied into TapIn’s
-            session log.
+            the current app so it can shield an app you selected. In StudIn, these checks enforce the
+            blocklist during Study intervals and stop blocking during Break intervals. When Accessibility
+            is enabled, TapIn also receives window-change events and the package name that owns each changed window. It
+            does not retrieve the window’s text, controls, taps, passwords, or content. Insights reads
+            up to 14 days of Android usage history to calculate daily totals, app-by-app time, charts,
+            and trends. Those Android usage records are read when needed and are not uploaded or copied
+            into TapIn’s session log.
           </DataCard>
 
           <DataCard icon={Database} title="Installed apps and your blocklist">
@@ -115,29 +118,41 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             When you deliberately start a card scan, TapIn reads the card’s stable tag identifier
             (UID). Registration reads the card twice to confirm that the UID is stable. TapIn stores the
             UID and the label you give the card, then compares later taps with registered UIDs to start
-            or end a session. TapIn does not read other card contents and never writes to the card. A
+            or end a TapIn session or to start an entire StudIn cycle. A later NFC tap does not normally
+            end a StudIn Study interval. TapIn does not read other card contents and never writes to the card. A
             card UID can be a persistent identifier, so protect access to your unlocked phone.
           </DataCard>
 
           <DataCard icon={Database} title="Settings and content you create">
             TapIn stores your chosen appearance, onboarding and welcome status, registered-card labels
-            and UIDs, selected blocklist, custom shield message, active-session state and start time,
+            and UIDs, selected blocklist, custom shield message, StudIn Study and Break durations and
+            round count, active-session mode and timing state,
             completed focus-session summaries, emergency-unlock month and use count, and any local
             feature-entitlement state. A completed-session summary contains the local calendar date and
             duration—not the apps you opened during that session.
           </DataCard>
 
+          <DataCard icon={Database} title="StudIn schedule and focus time">
+            TapIn stores the Study duration, Break duration, round count, and timing needed to recover
+            an active StudIn cycle. Completed StudIn summaries count only Study time; Break time is excluded.
+          </DataCard>
+
           <DataCard icon={Smartphone} title="Permission and service status">
-            TapIn checks whether Usage Access, display-over-apps access, NFC, and notification access are
-            available so it can guide setup and run the features you request. It does not create a
-            history of permission changes. While a focus session is active, an ongoing Android
-            foreground-service notification keeps blocking reliable.
+            TapIn checks whether Usage Access, Accessibility, display-over-apps access, NFC, and
+            notification access are available so it can guide setup and run the features you request.
+            It does not create a history of permission changes. While a focus session is active, an
+            ongoing Android foreground-service notification keeps blocking reliable.
           </DataCard>
         </PolicySection>
 
         <PolicySection number="3" title="How Android permissions are used">
           <Bullet title="Usage Access">
             Detects the foreground app during a session and calculates on-device screen-time Insights.
+          </Bullet>
+          <Bullet title="Accessibility">
+            Receives package-level window changes while blocking is active. If a changed window belongs
+            to an app on your blocklist, TapIn sends the device Home immediately. StudIn does this during
+            Study intervals, not Break intervals. TapIn does not retrieve the window-content tree.
           </Bullet>
           <Bullet title="Display over other apps">
             Places TapIn’s shield over a selected blocked app. The shield may show that app’s name and
@@ -174,7 +189,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
         <PolicySection number="4" title="Local storage and retention">
           <Paragraph>
             TapIn stores its data in app-private Android storage using AsyncStorage and SharedPreferences.
-            The blocklist, registered cards, preferences, shield message, and related state remain until
+            The blocklist, registered cards, preferences, shield message, StudIn schedule, and related state remain until
             you change them, remove them, clear TapIn’s storage, or uninstall the app. Session history is
             limited to the most recent 400 completed sessions; sessions shorter than five seconds are not
             recorded. Emergency-unlock usage is interpreted by local calendar month and resets on the
@@ -208,11 +223,15 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
 
         <PolicySection number="6" title="Your choices and controls">
           <Bullet title="Permissions">
-            Grant or revoke Usage Access, display-over-apps access, NFC, and notifications in Android
-            Settings. A feature that needs revoked access will stop working.
+            Grant or revoke Usage Access, Accessibility, display-over-apps access, NFC, and notifications
+            in Android Settings. A feature that needs revoked access will stop working.
           </Bullet>
           <Bullet title="Cards and blocklist">
             Remove registered cards in TapIn’s card manager and add or remove apps from the Blocklist.
+          </Bullet>
+          <Bullet title="StudIn schedule">
+            Choose the Study duration, Break duration, and number of rounds before starting a StudIn cycle.
+            Emergency Exit is the only in-app way to end a Study interval early.
           </Bullet>
           <Bullet title="Shield message">
             Edit it in Settings or leave it empty to restore TapIn’s default message.
@@ -236,12 +255,14 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
 
         <PolicySection number="8" title="Automated operation and legal bases">
           <Paragraph>
-            Blocking is an on-device automated function: TapIn compares the detected foreground package
-            with the blocklist you chose and displays the shield when they match. It does not make
-            decisions with legal or similarly significant effects and does not build an advertising
-            profile. Where data-protection law requires a legal basis, this device-local processing is
-            performed at your request to provide the app and based on the permissions and choices you
-            control.
+            Blocking is an on-device automated function: TapIn compares a foreground or changed-window
+            package with the blocklist you chose. When they match during a blocking interval, it returns
+            to Home immediately and uses the blocking shield as a fallback. StudIn uses the schedule you
+            selected to release restrictions when Study reaches zero, begin Break, and reapply restrictions
+            when the next Study begins. It does not make decisions with legal or similarly
+            significant effects and does not build an advertising profile. Where data-protection law
+            requires a legal basis, this device-local processing is performed at your request to provide
+            the app and based on the permissions and choices you control.
           </Paragraph>
         </PolicySection>
 

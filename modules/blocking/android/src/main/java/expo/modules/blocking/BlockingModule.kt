@@ -1,6 +1,7 @@
 package expo.modules.blocking
 
 import android.app.AppOpsManager
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -11,6 +12,7 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.Base64
+import android.view.accessibility.AccessibilityManager
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -38,14 +40,37 @@ class BlockingModule : Module() {
 
     AsyncFunction("startSession") { blocklist: List<String> ->
       val context = requireNotNull(appContext.reactContext)
-      if (!hasUsageAccess(context)) {
-        throw IllegalStateException("Usage access is required before apps can be blocked.")
-      }
-      if (!Settings.canDrawOverlays(context)) {
-        throw IllegalStateException("Display-over-other-apps permission is required before apps can be blocked.")
-      }
-
+      requireBlockingPermissions(context)
       BlockingPreferences.start(context, blocklist)
+      ContextCompat.startForegroundService(
+        context,
+        Intent(context, ForegroundBlockService::class.java)
+      )
+    }
+
+    AsyncFunction("startStudInSession") {
+        blocklist: List<String>,
+        studyDurationSeconds: Int,
+        breakDurationSeconds: Int,
+        rounds: Int ->
+      val context = requireNotNull(appContext.reactContext)
+      requireBlockingPermissions(context)
+      require(blocklist.isNotEmpty()) { "Choose at least one app to block first." }
+      require(studyDurationSeconds in 60..(180 * 60)) {
+        "Study duration must be between 1 and 180 minutes."
+      }
+      require(breakDurationSeconds in 60..(60 * 60)) {
+        "Break duration must be between 1 and 60 minutes."
+      }
+      require(rounds in 1..12) { "StudIn rounds must be between 1 and 12." }
+
+      BlockingPreferences.startStudIn(
+        context,
+        blocklist,
+        studyDurationSeconds,
+        breakDurationSeconds,
+        rounds
+      )
       ContextCompat.startForegroundService(
         context,
         Intent(context, ForegroundBlockService::class.java)
@@ -61,6 +86,30 @@ class BlockingModule : Module() {
     AsyncFunction("isSessionActive") {
       val context = requireNotNull(appContext.reactContext)
       BlockingPreferences.isActive(context)
+    }
+
+    AsyncFunction("getSessionState") {
+      val state = BlockingPreferences.sessionState(requireNotNull(appContext.reactContext))
+      mapOf(
+        "active" to state.active,
+        "mode" to state.mode,
+        "phase" to state.phase,
+        "currentRound" to state.currentRound,
+        "totalRounds" to state.totalRounds,
+        "phaseStartedAt" to state.phaseStartedAt.toDouble(),
+        "phaseEndsAt" to state.phaseEndsAt.toDouble(),
+        "sessionStartedAt" to state.sessionStartedAt.toDouble(),
+        "studyDurationSeconds" to state.studyDurationSeconds,
+        "breakDurationSeconds" to state.breakDurationSeconds
+      )
+    }
+
+    AsyncFunction("consumeStudInResult") {
+      val result = BlockingPreferences.consumeStudInResult(requireNotNull(appContext.reactContext))
+      mapOf(
+        "focusSeconds" to result.focusSeconds.toDouble(),
+        "completed" to result.completed
+      )
     }
 
     AsyncFunction("setAppearanceMode") { mode: String ->
@@ -80,6 +129,10 @@ class BlockingModule : Module() {
 
     AsyncFunction("hasOverlayPermission") {
       Settings.canDrawOverlays(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("hasAccessibilityAccess") {
+      hasAccessibilityAccess(requireNotNull(appContext.reactContext))
     }
 
     AsyncFunction("getScreenTimeToday") {
@@ -266,6 +319,29 @@ class BlockingModule : Module() {
         }
       }.toString()
     }
+  }
+
+  private fun requireBlockingPermissions(context: Context) {
+    if (!hasUsageAccess(context)) {
+      throw IllegalStateException("Usage access is required before apps can be blocked.")
+    }
+    if (!Settings.canDrawOverlays(context)) {
+      throw IllegalStateException("Display-over-other-apps permission is required before apps can be blocked.")
+    }
+    if (!hasAccessibilityAccess(context)) {
+      throw IllegalStateException("Accessibility access is required before apps can be blocked.")
+    }
+  }
+
+  private fun hasAccessibilityAccess(context: Context): Boolean {
+    val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    return manager
+      .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+      .any { enabled ->
+        val service = enabled.resolveInfo.serviceInfo
+        service.packageName == context.packageName &&
+          service.name == AccessibilityBlockService::class.java.name
+      }
   }
 
   private fun hasUsageAccess(context: Context): Boolean {

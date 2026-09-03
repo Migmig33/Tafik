@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
+import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import House from "lucide-react-native/icons/house";
 import ListChecks from "lucide-react-native/icons/list-checks";
@@ -32,6 +33,7 @@ export default function BottomNav({
   onCancel,
   active,
   scanning,
+  studIn = false,
 }: {
   current: Tab;
   nav: Nav;
@@ -43,6 +45,8 @@ export default function BottomNav({
   active: boolean;
   /** True while a read is open, which turns the button into that cancel. */
   scanning: boolean;
+  /** StudIn mode selected. The centre action names the session it will start. */
+  studIn?: boolean;
 }) {
   const { colors } = useTheme();
 
@@ -91,13 +95,20 @@ export default function BottomNav({
           the bar's top edge, which it cannot do as a flex child. box-none lets
           taps through the transparent strip either side of it. */}
       <View pointerEvents="box-none" style={styles.actionLayer}>
-        {/* Idle it is the app's own mark. A live session swaps it for the red X
-            that starts the card-confirmed end flow; once scanning, the same X
-            cancels that pending read. */}
+        {/* Idle it is the app's own mark, or StudIn's when that mode is on, so
+            the button says which session the next tap opens. A live session
+            swaps it for the red X that starts the card-confirmed end flow; once
+            scanning, the same X cancels that pending read. */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            scanning ? "Cancel card scan" : active ? "End focus session" : "Tap in"
+            scanning
+              ? "Cancel card scan"
+              : active
+                ? "End focus session"
+                : studIn
+                  ? "Start StudIn"
+                  : "Tap in"
           }
           onPress={scanning ? onCancel : onTapIn}
           style={({ pressed }) => [
@@ -110,6 +121,8 @@ export default function BottomNav({
         >
           {active || scanning ? (
             <X size={24} color={colors.onDanger} strokeWidth={2.6} />
+          ) : studIn ? (
+            <BookOpenCheck size={25} color={colors.text} strokeWidth={2.2} />
           ) : (
             <AppMark height={26} color={colors.text} />
           )}
