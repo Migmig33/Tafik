@@ -2,8 +2,9 @@
 
 TapIn uses an NFC card to start or end an open-ended focus session. StudIn uses
 one NFC scan to start a timed Study and Break cycle that ends automatically.
-Android-only. v2 ships fully unlocked, with no backend, accounts, analytics, or
-app-initiated network calls.
+Android-only. TapIn is sold as a paid download, with every available feature
+included and no in-app purchases or subscriptions. It has no backend, accounts,
+analytics, or app-initiated network calls.
 
 ## What runs today (this repo)
 
@@ -44,7 +45,9 @@ TapIn session or a timed StudIn cycle.
 ## Before you ship
 
 - Confirm `com.kupdevs.tapin` is the permanent Android application ID before the first Play upload.
-- Fill the Play Console **Data Safety** form as "no data collected / stays on device".
+- Complete the Play Console **Data Safety** form based on the release build; the current app keeps its
+  feature data on-device and does not transmit it to the developer.
+- Publish the privacy policy at an active public URL and add that URL to the Play listing as well as the app.
 - Justify the Usage Access + overlay permissions in your store listing.
 - Complete Google Play's Accessibility declaration, prominent-disclosure flow, and reviewer video.
 - Build and test the signed production AAB before promoting it beyond internal testing.

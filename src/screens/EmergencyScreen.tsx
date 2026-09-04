@@ -14,7 +14,7 @@ import { radius, space, useTheme } from "../theme";
 import { Text } from "../typography";
 
 /**
- * The way back in when the card isn't. Deliberately awkward: a 30 second hold,
+ * The way back in when the card isn't. Deliberately awkward: a 45-second hold,
  * and only a few per month, so it can't quietly become the normal way to end a
  * session. The hold is spent only once the unlock actually succeeds.
  */

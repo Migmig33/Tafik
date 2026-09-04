@@ -47,8 +47,8 @@ consumeStudInResult(): Promise<{ focusSeconds: number; completed: boolean }>
 hasUsageAccess(): Promise<boolean>                   // for real onboarding checks
 hasOverlayPermission(): Promise<boolean>
 hasAccessibilityAccess(): Promise<boolean>
-getInstalledApps(): Promise<{ name: string; pkg: string }[]>
-getInstalledAppsWithIcons(): Promise<string>                   // names, packages, icon data URIs
+getInstalledApps(): Promise<{ name: string; pkg: string }[]>   // launcher apps via a narrow intent query
+getInstalledAppsWithIcons(): Promise<string>                   // launcher apps, packages, icon data URIs
 getScreenTimeToday(): Promise<number>                          // foreground app time in ms
 getAppScreenTimeToday(): Promise<string>                        // per-app foreground time JSON
 getScreenTimeInsights(): Promise<string>                        // fourteen daily totals + apps JSON

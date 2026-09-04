@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import CreditCard from "lucide-react-native/icons/credit-card";
-import Lock from "lucide-react-native/icons/lock";
-import Plus from "lucide-react-native/icons/plus";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import { Body, GhostButton, PrimaryButton, Screen, TapRipple, Title } from "../components";
 import { Nav } from "../nav";
 import { cancelCardRead, readCardUid } from "../nfc";
-import { usePremium } from "../premium";
 import {
   addRegisteredCard,
   getRegisteredCards,
@@ -31,14 +28,11 @@ function uidHint(uid: string): string {
 export default function CardSetupScreen({
   nav,
   active,
-  onUnlock,
 }: {
   nav: Nav;
   active: boolean;
-  onUnlock?: () => void;
 }) {
   const { colors } = useTheme();
-  const { isPremium, ready: premiumReady } = usePremium();
   const [cards, setCards] = useState<RegisteredCard[]>([]);
   const [cardsReady, setCardsReady] = useState(false);
   const [step, setStep] = useState<Step>("list");
@@ -63,10 +57,6 @@ export default function CardSetupScreen({
   }, []);
 
   const beginAdd = () => {
-    if (cards.length >= 1 && !isPremium) {
-      onUnlock?.();
-      return;
-    }
     setFirstUid(null);
     setLabel(nextCardLabel(cards));
     setMessage("");
@@ -125,7 +115,7 @@ export default function CardSetupScreen({
     if (!firstUid) return;
     const nextLabel = label.trim() || nextCardLabel(cards);
     try {
-      const next = await addRegisteredCard({ uid: firstUid, label: nextLabel }, isPremium);
+      const next = await addRegisteredCard({ uid: firstUid, label: nextLabel });
       setCards(next);
       setLabel(nextLabel);
       setStep("done");
@@ -164,7 +154,6 @@ export default function CardSetupScreen({
   };
 
   if (step === "list") {
-    const freeLimitReached = premiumReady && !isPremium && cards.length >= 1;
     return (
       <Screen>
         <Title>Your cards</Title>
@@ -222,27 +211,10 @@ export default function CardSetupScreen({
           )}
         </ScrollView>
 
-        {premiumReady &&
-          (freeLimitReached ? (
-            <Pressable
-              onPress={onUnlock}
-              style={({ pressed }) => [
-                styles.lockedAdd,
-                { borderColor: colors.border, opacity: pressed ? 0.65 : 1 },
-              ]}
-            >
-              <Plus size={19} color={colors.textDim} strokeWidth={2.2} />
-              <Text style={{ flex: 1, color: colors.text, fontSize: 15, fontWeight: "600" }}>
-                Add another card
-              </Text>
-              <Lock size={17} color={colors.textDim} strokeWidth={2.2} />
-            </Pressable>
-          ) : (
-            <PrimaryButton
-              label={cards.length === 0 ? "Add a card" : "Add another card"}
-              onPress={beginAdd}
-            />
-          ))}
+        <PrimaryButton
+          label={cards.length === 0 ? "Add a card" : "Add another card"}
+          onPress={beginAdd}
+        />
         <GhostButton label="Back" onPress={() => nav("home")} />
       </Screen>
     );
@@ -379,15 +351,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-  },
-  lockedAdd: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(1.25),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    paddingHorizontal: space(2),
   },
   wizardBody: {
     flex: 1,

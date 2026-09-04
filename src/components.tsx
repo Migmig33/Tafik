@@ -16,8 +16,14 @@ import { Text } from "./typography";
 // The glyph's share of the square artwork. The asset carries a large safe-zone
 // margin, so anything drawing the mark has to crop to these bounds or it gets
 // padding it did not ask for.
-const GLYPH_WIDTH_RATIO = 0.22;
+const GLYPH_WIDTH_RATIO = 0.25;
 const GLYPH_HEIGHT_RATIO = 0.381;
+
+// The supplied motion reference builds the mark in two overlapping pieces.
+// These bounds isolate the horizontal bar inside the cropped glyph without
+// maintaining a second logo asset that could drift from the launcher artwork.
+const GLYPH_CROSSBAR_TOP_RATIO = 0.23;
+const GLYPH_CROSSBAR_HEIGHT_RATIO = 0.23;
 
 /**
  * The launcher icon's "t", cropped to the letter itself and tinted. Drawing it
@@ -42,6 +48,64 @@ export function AppMark({ height, color }: { height: number; color: string }) {
         resizeMode="contain"
         accessibilityIgnoresInvertColors
       />
+    </View>
+  );
+}
+
+/**
+ * Reproduces the reference clip's two-stage reveal: the crossbar leads, then
+ * the diagonal stem catches up underneath it. The sampled opacity stops come
+ * from the first 600 ms of the supplied five-second video; its remaining time
+ * is a static hold.
+ */
+function AnimatedAppMark({
+  height,
+  color,
+  progress,
+}: {
+  height: number;
+  color: string;
+  progress: Animated.Value;
+}) {
+  const artwork = Math.round(height / GLYPH_HEIGHT_RATIO);
+  const width = Math.round(artwork * GLYPH_WIDTH_RATIO);
+  const crossbarTop = Math.round(height * GLYPH_CROSSBAR_TOP_RATIO);
+  const crossbarHeight = Math.round(height * GLYPH_CROSSBAR_HEIGHT_RATIO);
+
+  const crossbarOpacity = progress.interpolate({
+    inputRange: [0, 0.083, 0.167, 0.25, 0.333, 0.417, 0.5, 0.583, 0.667, 0.75, 0.833, 1],
+    outputRange: [0, 0.12, 0.32, 0.42, 0.6, 0.69, 0.82, 0.87, 0.95, 0.98, 1, 1],
+  });
+  const stemOpacity = progress.interpolate({
+    inputRange: [0, 0.333, 0.417, 0.5, 0.583, 0.667, 0.75, 0.833, 0.917, 1],
+    outputRange: [0, 0, 0.09, 0.36, 0.5, 0.72, 0.81, 0.95, 0.985, 1],
+  });
+
+  return (
+    <View style={{ width, height }}>
+      {/* The complete mark supplies the delayed diagonal layer. Rendering the
+          bar again above it recreates the small overlap visible in the clip. */}
+      <Animated.View
+        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, opacity: stemOpacity }}
+      >
+        <AppMark height={height} color={color} />
+      </Animated.View>
+
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: crossbarTop,
+          height: crossbarHeight,
+          overflow: "hidden",
+          opacity: crossbarOpacity,
+        }}
+      >
+        <View style={{ position: "absolute", left: 0, top: -crossbarTop }}>
+          <AppMark height={height} color={color} />
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -112,6 +176,8 @@ export function PrimaryButton({
   const { colors } = useTheme();
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
@@ -138,7 +204,11 @@ export function PrimaryButton({
 export function GhostButton({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={{ paddingVertical: space(1.5), alignItems: "center" }}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{ paddingVertical: space(1.5), alignItems: "center" }}
+    >
       <Text style={{ color: colors.textDim, fontSize: 15, fontWeight: "500" }}>{label}</Text>
     </Pressable>
   );
@@ -406,7 +476,7 @@ export function HoldButton({
       const remaining = seconds - Math.floor((Date.now() - startedAt) / 1000);
       setLeft(Math.max(0, remaining));
     }, 250);
-    // Width can't be driven natively, but one bar over 30s is cheap.
+    // Width can't be driven natively, but one slowly moving bar is cheap.
     Animated.timing(progress, {
       toValue: 1,
       duration: seconds * 1000,
@@ -478,10 +548,10 @@ export function HoldButton({
 }
 
 /**
- * The animated brand lockup: the t mark scales up, then the wordmark and
- * tagline rise under it. Shared by the first-run welcome and the ordinary
- * launch intro so the two can never drift apart. `onDone` fires once the whole
- * sequence has settled.
+ * The animated brand lockup: the t assembles like the supplied reference while
+ * the wordmark and tagline rise underneath. Shared by the first-run welcome
+ * and the ordinary launch intro so the two can never drift apart. `onDone`
+ * fires once the whole sequence has settled.
  */
 export function BrandLockup({
   durationMs,
@@ -506,21 +576,24 @@ export function BrandLockup({
   const total = useRef(durationMs);
 
   useEffect(() => {
-    // The mark and the wordmark split the clip 60/40, so the lockup lands
-    // exactly as the sound ends. A shorter clip means a faster animation.
-    const animation = Animated.sequence([
+    // The measured mark reveal fills the clip while the copy joins during its
+    // final 40%. Both start from the same mount that requests the whoosh.
+    const animation = Animated.parallel([
       Animated.timing(mark, {
         toValue: 1,
-        duration: Math.round(total.current * 0.6),
-        easing: Easing.out(Easing.cubic),
+        duration: total.current,
+        easing: Easing.linear,
         useNativeDriver: true,
       }),
-      Animated.timing(copy, {
-        toValue: 1,
-        duration: Math.round(total.current * 0.4),
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
+      Animated.sequence([
+        Animated.delay(Math.round(total.current * 0.6)),
+        Animated.timing(copy, {
+          toValue: 1,
+          duration: Math.round(total.current * 0.4),
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
     ]);
     animation.start(({ finished }) => {
       if (finished) done.current?.();
@@ -533,13 +606,9 @@ export function BrandLockup({
       <Animated.View
         style={{
           alignItems: "center",
-          opacity: mark,
-          transform: [
-            { scale: mark.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) },
-          ],
         }}
       >
-        <AppMark height={96} color={colors.accent} />
+        <AnimatedAppMark height={96} color={colors.accent} progress={mark} />
       </Animated.View>
 
       <Animated.View

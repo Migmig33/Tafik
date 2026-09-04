@@ -1,21 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Hourglass from "lucide-react-native/icons/hourglass";
-import Lock from "lucide-react-native/icons/lock";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import Timer from "lucide-react-native/icons/timer";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
-import type { DimensionValue } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
+import { UsageAccessDisclosure } from "../AccessDisclosures";
 import { AppScreenTime, getInstalledApps, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
 import { Screen, Title } from "../components";
-import { usePremium } from "../premium";
 import { getSessions, SessionRecord, todayKey } from "../store";
-import { radius, space, useTheme } from "../theme";
+import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
 type Period = "today" | "yesterday" | "week";
@@ -91,11 +89,8 @@ function focusWeek(sessions: SessionRecord[], now = new Date()): FocusDay[] {
   });
 }
 
-export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) {
+export default function InsightsScreen() {
   const { colors } = useTheme();
-  // Free sees how long today and yesterday were. Premium sees the shape of it:
-  // which apps, the week, and whether the week is going the right way.
-  const { isPremium, ready: premiumReady } = usePremium();
   const [period, setPeriod] = useState<Period>("today");
   const [showAllApps, setShowAllApps] = useState(false);
   const [days, setDays] = useState<ScreenTimeDay[] | null | undefined>(undefined);
@@ -104,6 +99,7 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
   // Launcher icons keyed by package. Screen-time rows carry only a name and a
   // package, so the icons are fetched separately and joined on pkg.
   const [icons, setIcons] = useState<Record<string, string>>({});
+  const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
 
   // A missing icon is not worth surfacing: the row falls back to a lettered
   // tile and the timings — the actual point of the screen — are unaffected.
@@ -218,9 +214,6 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
                 <Text style={{ color: selected ? colors.accent : colors.textDim, fontWeight: "600", fontSize: 13 }}>
                   {item === "week" ? "7 days" : item[0].toUpperCase() + item.slice(1)}
                 </Text>
-                {item === "week" && !isPremium && (
-                  <Lock size={11} color={selected ? colors.accent : colors.textDim} strokeWidth={2.6} />
-                )}
               </Pressable>
             );
           })}
@@ -240,11 +233,11 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
             <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Screen time unavailable</Text>
             <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{error}</Text>
           </View>
-        ) : days === undefined || !premiumReady ? (
+        ) : days === undefined ? (
           <Text style={{ color: colors.textDim, marginTop: space(4) }}>Loading screen time…</Text>
         ) : days === null ? (
           <Pressable
-            onPress={() => Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS")}
+            onPress={() => setUsageDisclosureOpen(true)}
             style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Usage Access required</Text>
@@ -252,97 +245,81 @@ export default function InsightsScreen({ onUnlock }: { onUnlock?: () => void }) 
           </Pressable>
         ) : (
           <>
-            {/* The week total is itself premium; today and yesterday are not. */}
-            {period === "week" && !isPremium ? (
-              <PremiumLock
-                title="See your whole week"
-                blurb="Seven days of screen time, the apps behind it, and whether you're trending up or down."
-                onUnlock={onUnlock}
-              >
-                <TotalCard label={periodLabel} value="•h ••m" />
-                <WeekChart days={chartDays} placeholder />
-                <TrendCard percent={-12} placeholder />
-              </PremiumLock>
-            ) : (
+            <TotalCard label={periodLabel} value={duration(summary.seconds)} />
+            {period === "week" && (
               <>
-                <TotalCard label={periodLabel} value={duration(summary.seconds)} />
-                {period === "week" && (
-                  <>
-                    <WeekChart days={chartDays} />
-                    {trend && <TrendCard percent={trend.percent} />}
-                  </>
-                )}
+                <WeekChart days={chartDays} />
+                {trend && <TrendCard percent={trend.percent} />}
               </>
             )}
 
             <View style={styles.listHeader}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>App usage</Text>
-              {isPremium && (
-                <Text style={{ color: colors.textDim, fontSize: 13 }}>{summary.apps.length} apps</Text>
-              )}
+              <Text style={{ color: colors.textDim, fontSize: 13 }}>{summary.apps.length} apps</Text>
             </View>
-            {isPremium ? (
-              <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {summary.apps.length === 0 ? (
-                  <Text style={{ color: colors.textDim, fontSize: 14, padding: space(2) }}>
-                    No app activity of at least one minute.
-                  </Text>
-                ) : (
-                  visibleApps.map((app, index) => (
-                    <View
-                      key={app.pkg}
-                      style={[
-                        styles.appRow,
-                        index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                      ]}
-                    >
-                      <AppIcon name={app.name} uri={icons[app.pkg]} />
-                      <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: 15 }}>
-                        {app.name}
-                      </Text>
-                      <Text style={{ color: colors.textDim, fontSize: 14, fontVariant: ["tabular-nums"] }}>
-                        {duration(app.seconds)}
-                      </Text>
-                    </View>
-                  ))
-                )}
-                {summary.apps.length > APP_PREVIEW_COUNT ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: showAllApps }}
-                    accessibilityLabel={showAllApps ? "Show fewer apps" : "View all app usage"}
-                    onPress={() => setShowAllApps((current) => !current)}
-                    style={({ pressed }) => [
-                      styles.viewAllRow,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: pressed ? colors.accentWash : colors.surface,
-                      },
+            <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {summary.apps.length === 0 ? (
+                <Text style={{ color: colors.textDim, fontSize: 14, padding: space(2) }}>
+                  No app activity of at least one minute.
+                </Text>
+              ) : (
+                visibleApps.map((app, index) => (
+                  <View
+                    key={app.pkg}
+                    style={[
+                      styles.appRow,
+                      index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
                     ]}
                   >
-                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
-                      {showAllApps ? "Show less" : `View all ${summary.apps.length} apps`}
+                    <AppIcon name={app.name} uri={icons[app.pkg]} />
+                    <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: 15 }}>
+                      {app.name}
                     </Text>
-                    {showAllApps ? (
-                      <ChevronUp size={16} color={colors.accent} strokeWidth={2.2} />
-                    ) : (
-                      <ChevronDown size={16} color={colors.accent} strokeWidth={2.2} />
-                    )}
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : (
-              <PremiumLock
-                title="See which apps took the time"
-                blurb="Ranked by how long each one held your attention."
-                onUnlock={onUnlock}
-              >
-                <AppListPlaceholder />
-              </PremiumLock>
-            )}
+                    <Text style={{ color: colors.textDim, fontSize: 14, fontVariant: ["tabular-nums"] }}>
+                      {duration(app.seconds)}
+                    </Text>
+                  </View>
+                ))
+              )}
+              {summary.apps.length > APP_PREVIEW_COUNT ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showAllApps }}
+                  accessibilityLabel={showAllApps ? "Show fewer apps" : "View all app usage"}
+                  onPress={() => setShowAllApps((current) => !current)}
+                  style={({ pressed }) => [
+                    styles.viewAllRow,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: pressed ? colors.accentWash : colors.surface,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
+                    {showAllApps ? "Show less" : `View all ${summary.apps.length} apps`}
+                  </Text>
+                  {showAllApps ? (
+                    <ChevronUp size={16} color={colors.accent} strokeWidth={2.2} />
+                  ) : (
+                    <ChevronDown size={16} color={colors.accent} strokeWidth={2.2} />
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
           </>
         )}
       </ScrollView>
+
+      <UsageAccessDisclosure
+        visible={usageDisclosureOpen}
+        onDecline={() => setUsageDisclosureOpen(false)}
+        onAgree={() => {
+          setUsageDisclosureOpen(false);
+          Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() =>
+            Linking.openSettings()
+          );
+        }}
+      />
     </Screen>
   );
 }
@@ -487,7 +464,7 @@ function AppIcon({ name, uri }: { name: string; uri?: string }) {
   );
 }
 
-/** The period total. Extracted so the locked preview can show the same shape. */
+/** The selected period's total screen time. */
 function TotalCard({ label, value }: { label: string; value: string }) {
   const { colors } = useTheme();
   return (
@@ -508,7 +485,7 @@ function TotalCard({ label, value }: { label: string; value: string }) {
  * than a colour: the accent green means "a session is running" everywhere else
  * in TapIn, and borrowing it here to mean "a good week" would blunt that.
  */
-function TrendCard({ percent, placeholder }: { percent: number; placeholder?: boolean }) {
+function TrendCard({ percent }: { percent: number }) {
   const { colors } = useTheme();
   const down = percent <= 0;
   const Icon = down ? TrendingDown : TrendingUp;
@@ -521,11 +498,9 @@ function TrendCard({ percent, placeholder }: { percent: number; placeholder?: bo
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
-          {placeholder
-            ? "Week over week"
-            : magnitude === 0
-              ? "Level with last week"
-              : `${magnitude}% ${down ? "less" : "more"} than last week`}
+          {magnitude === 0
+            ? "Level with last week"
+            : `${magnitude}% ${down ? "less" : "more"} than last week`}
         </Text>
         <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
           How these seven days compare with the seven before them.
@@ -535,47 +510,38 @@ function TrendCard({ percent, placeholder }: { percent: number; placeholder?: bo
   );
 }
 
-/**
- * The bar chart. In placeholder mode it draws a fixed sample silhouette in the
- * border colour instead of the user's real data: the locked preview exists to
- * show the shape of the feature, not to hand over the numbers behind it.
- */
-function WeekChart({ days, placeholder }: { days: ScreenTimeDay[]; placeholder?: boolean }) {
+/** Screen time for each of the last seven local-calendar days. */
+function WeekChart({ days }: { days: ScreenTimeDay[] }) {
   const { colors } = useTheme();
   const max = Math.max(...days.map((day) => day.seconds), 1);
   const average = days.length
     ? Math.round(days.reduce((sum, day) => sum + day.seconds, 0) / days.length)
     : 0;
-  const sample = [46, 72, 38, 84, 60, 30, 66];
 
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.chartTitle}>
         <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Daily screen time</Text>
-        <Text style={{ color: colors.textDim, fontSize: 13 }}>
-          {placeholder ? "••m avg" : `${duration(average)} avg`}
-        </Text>
+        <Text style={{ color: colors.textDim, fontSize: 13 }}>{duration(average)} avg</Text>
       </View>
       <View style={styles.bars}>
-        {days.map((day, index) => (
+        {days.map((day) => (
           <View key={day.date} style={styles.barColumn}>
             <View style={styles.barTrack}>
               <Text style={[styles.barValue, { color: colors.textDim }]}>
-                {placeholder ? "••" : chartDuration(day.seconds)}
+                {chartDuration(day.seconds)}
               </Text>
               <View style={styles.barArea}>
                 <View
                   style={[
                     styles.bar,
-                    placeholder
-                      ? { backgroundColor: colors.border, height: sample[index % sample.length] }
-                      : {
-                          backgroundColor: colors.accent,
-                          height:
-                            day.seconds === 0
-                              ? 3
-                              : Math.max(8, Math.round((day.seconds / max) * 88)),
-                        },
+                    {
+                      backgroundColor: colors.accent,
+                      height:
+                        day.seconds === 0
+                          ? 3
+                          : Math.max(8, Math.round((day.seconds / max) * 88)),
+                    },
                   ]}
                 />
               </View>
@@ -583,88 +549,6 @@ function WeekChart({ days, placeholder }: { days: ScreenTimeDay[]; placeholder?:
             <Text style={{ color: colors.textDim, fontSize: 11 }}>{dayName(day.date)}</Text>
           </View>
         ))}
-      </View>
-    </View>
-  );
-}
-
-/** Redacted rows: the shape of the list is visible, the data behind it is not. */
-function AppListPlaceholder() {
-  const { colors } = useTheme();
-  const widths: DimensionValue[] = ["62%", "48%", "70%", "40%"];
-
-  return (
-    <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {widths.map((width, index) => (
-        <View
-          key={String(width)}
-          style={[
-            styles.appRow,
-            index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.appIcon, { backgroundColor: colors.border }]} />
-          <View style={[styles.redaction, { backgroundColor: colors.border, width }]} />
-          <View style={{ flex: 1 }} />
-          <View style={[styles.redaction, { backgroundColor: colors.border, width: 42 }]} />
-        </View>
-      ))}
-    </View>
-  );
-}
-
-/**
- * A premium feature shown rather than hidden: the real layout underneath, dimmed
- * and inert, with the offer on top. Someone deciding whether to pay should be
- * able to see what they would be paying for.
- */
-function PremiumLock({
-  title,
-  blurb,
-  onUnlock,
-  children,
-}: {
-  title: string;
-  blurb: string;
-  onUnlock?: () => void;
-  children: React.ReactNode;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={styles.lockWrap}>
-      {/* Inert, so a tap anywhere on the preview reaches the offer on top. */}
-      <View pointerEvents="none" style={{ opacity: 0.4 }}>
-        {children}
-      </View>
-      <View style={styles.lockOverlay}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${title}. Unlock with Premium.`}
-          onPress={onUnlock}
-          style={({ pressed }) => [
-            styles.lockCard,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-        >
-          <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-            <Lock size={19} color={colors.accent} strokeWidth={2.2} />
-          </View>
-          <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600", textAlign: "center" }}>
-            {title}
-          </Text>
-          <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, textAlign: "center" }}>
-            {blurb}
-          </Text>
-          <View style={[styles.unlockButton, { backgroundColor: colors.accent }]}>
-            <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: "600" }}>
-              Unlock Premium
-            </Text>
-          </View>
-        </Pressable>
       </View>
     </View>
   );
@@ -901,39 +785,5 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-  },
-  redaction: {
-    height: 11,
-    borderRadius: 6,
-  },
-  lockWrap: {
-    position: "relative",
-  },
-  lockOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: space(2),
-  },
-  lockCard: {
-    alignItems: "center",
-    gap: space(1),
-    maxWidth: 320,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
-    paddingHorizontal: space(2.5),
-    paddingVertical: space(2.5),
-  },
-  unlockButton: {
-    marginTop: space(0.75),
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: space(2.5),
-    borderRadius: radius.pill,
   },
 });

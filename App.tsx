@@ -50,12 +50,10 @@ import {
   setActiveSessionStartedAt,
   setWelcomeSeen,
 } from "./src/store";
-import { PremiumProvider, usePremium } from "./src/premium";
 import { ThemeProvider, useTheme } from "./src/theme";
 
 function AppContent() {
   const { colors, isDark } = useTheme();
-  const { isPremium, ready: premiumReady } = usePremium();
   const [ready, setReady] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
   // Assume seen until storage says otherwise, so a returning user never gets a
@@ -123,13 +121,12 @@ function AppContent() {
     })();
   }, []);
 
-  // Keep SharedPreferences in step with what the user is entitled to, not just
-  // with what happens to be stored: a message written on Premium must stop
-  // reaching the shield if the entitlement ever goes away.
+  // Keep the service's native copy in step with the locally stored message.
   useEffect(() => {
-    if (!premiumReady) return;
-    getShieldMessage().then((message) => syncShieldMessage(isPremium ? message : ""));
-  }, [isPremium, premiumReady]);
+    void getShieldMessage()
+      .then(syncShieldMessage)
+      .catch(() => {});
+  }, []);
 
   // Refresh block count whenever we land back on home.
   useEffect(() => {
@@ -479,11 +476,9 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <PremiumProvider>
-        <ErrorBoundary>
-          <AppContent />
-        </ErrorBoundary>
-      </PremiumProvider>
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

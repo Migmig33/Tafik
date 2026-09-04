@@ -76,10 +76,12 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
           <View style={styles.summaryCopy}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>The short version</Text>
             <Text style={[styles.paragraph, { color: colors.textDim }]}>
-              TapIn has no user accounts or developer-operated backend. It does not contain ads,
-              analytics, or tracking SDKs, and it does not sell personal information. App and device
-              activity is processed locally for blocking and Insights. Local app data may still be
-              included in Android backup or device-transfer features if you enable them.
+              TapIn is a paid download with every available feature included; it has no in-app
+              purchases or subscriptions. TapIn has no user accounts or developer-operated backend.
+              It does not contain ads, analytics, or tracking SDKs, and it does not sell personal
+              information. App and device activity is processed locally for blocking and Insights.
+              Local app data may still be included in Android backup or device-transfer features if
+              you enable them.
             </Text>
           </View>
         </View>
@@ -127,8 +129,8 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             TapIn stores your chosen appearance, onboarding and welcome status, registered-card labels
             and UIDs, selected blocklist, custom shield message, StudIn Study and Break durations and
             round count, active-session mode and timing state,
-            completed focus-session summaries, emergency-unlock month and use count, and any local
-            feature-entitlement state. A completed-session summary contains the local calendar date and
+            completed focus-session summaries, and emergency-unlock month and use count. A
+            completed-session summary contains the local calendar date and
             duration—not the apps you opened during that session.
           </DataCard>
 
@@ -218,6 +220,13 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             diagnostics you enabled, or perform backup and restore. Their processing is governed by
             their own settings and privacy policies, and TapIn does not receive the on-device data listed
             above from them.
+          </Paragraph>
+          <Paragraph>
+            TapIn is sold as a paid Google Play download. Google Play processes the purchase outside
+            the TapIn app under Google&apos;s terms and privacy policy. Google may provide the developer
+            with purchase, licensing, and financial-reporting information needed to distribute the app
+            and administer transactions. TapIn has no in-app purchases or subscriptions, and the app
+            does not receive or store your payment-card details.
           </Paragraph>
         </PolicySection>
 

@@ -10,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { AccessibilityDisclosure, UsageAccessDisclosure } from "../AccessDisclosures";
 import {
   hasAccessibilityAccess,
   hasAccessibilityServiceSupport,
@@ -75,6 +76,8 @@ const PERMS: {
 
 export default function OnboardingScreen({ nav }: { nav: Nav }) {
   const { colors } = useTheme();
+  const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
+  const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
   const [granted, setGranted] = useState<Record<PermKey, boolean>>({
     usage: false,
     accessibility: false,
@@ -126,7 +129,8 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
           }
         }
       } else if (key === "usage") {
-        await Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS");
+        setUsageDisclosureOpen(true);
+        return;
       } else if (key === "accessibility") {
         if (!hasAccessibilityServiceSupport()) {
           Alert.alert(
@@ -135,21 +139,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
           );
           return;
         }
-        Alert.alert(
-          "Accessibility disclosure",
-          "TapIn observes which app owns the current window. During an active focus session, if that app is on your blocklist, TapIn immediately sends you Home. It does not read screen text, taps, passwords, or other window content, and it does not send this information off your phone.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Continue",
-              onPress: () => {
-                Linking.sendIntent("android.settings.ACCESSIBILITY_SETTINGS").catch(() =>
-                  Linking.openSettings()
-                );
-              },
-            },
-          ]
-        );
+        setAccessibilityDisclosureOpen(true);
         return;
       } else if (key === "overlay") {
         await Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION");
@@ -233,6 +223,28 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
           }}
         />
       </ScrollView>
+
+      <AccessibilityDisclosure
+        visible={accessibilityDisclosureOpen}
+        onDecline={() => setAccessibilityDisclosureOpen(false)}
+        onAgree={() => {
+          setAccessibilityDisclosureOpen(false);
+          Linking.sendIntent("android.settings.ACCESSIBILITY_SETTINGS").catch(() =>
+            Linking.openSettings()
+          );
+        }}
+      />
+
+      <UsageAccessDisclosure
+        visible={usageDisclosureOpen}
+        onDecline={() => setUsageDisclosureOpen(false)}
+        onAgree={() => {
+          setUsageDisclosureOpen(false);
+          Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() =>
+            Linking.openSettings()
+          );
+        }}
+      />
     </Screen>
   );
 }

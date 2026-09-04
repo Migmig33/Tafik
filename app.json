@@ -16,12 +16,11 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.QUERY_ALL_PACKAGES",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#121110"
+        "backgroundColor": "#000000"
       }
     },
     "plugins": [

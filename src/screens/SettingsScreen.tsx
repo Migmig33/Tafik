@@ -15,7 +15,6 @@ import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import FileText from "lucide-react-native/icons/file-text";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Layers from "lucide-react-native/icons/layers";
-import Lock from "lucide-react-native/icons/lock";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
 import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
 import Monitor from "lucide-react-native/icons/monitor";
@@ -26,13 +25,13 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Star from "lucide-react-native/icons/star";
 import Sun from "lucide-react-native/icons/sun";
 import type { LucideIcon } from "lucide-react-native";
+import { AccessibilityDisclosure, UsageAccessDisclosure } from "../AccessDisclosures";
 import {
   hasAccessibilityAccess,
   hasOverlayPermission,
   hasUsageAccess,
 } from "../blocking";
 import { Body, InfoSheet, Screen, Title } from "../components";
-import { usePremium } from "../premium";
 import {
   EMERGENCY_HOLD_SECONDS,
   EMERGENCY_UNLOCKS_PER_MONTH,
@@ -92,12 +91,10 @@ const DEFAULT_SHIELD_MESSAGE =
 type AccessState = { usage: boolean; accessibility: boolean; overlay: boolean };
 
 export default function SettingsScreen({
-  onUnlock,
   onManageCards,
   onOpenPrivacy,
   onModeChange,
 }: {
-  onUnlock?: () => void;
   onManageCards: () => void;
   onOpenPrivacy: () => void;
   /** Lets the shell repaint the tab bar's centre action as the switch slides,
@@ -105,7 +102,6 @@ export default function SettingsScreen({
   onModeChange?: (mode: FocusMode) => void;
 }) {
   const { colors, mode, setMode } = useTheme();
-  const { isPremium, ready: premiumReady } = usePremium();
   const [access, setAccess] = useState<AccessState>({
     usage: false,
     accessibility: false,
@@ -119,6 +115,8 @@ export default function SettingsScreen({
   const [emergencyInfoOpen, setEmergencyInfoOpen] = useState(false);
   // Which outbound link the user pressed before it had somewhere to go.
   const [pendingLink, setPendingLink] = useState<AboutLink | null>(null);
+  const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
+  const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
 
   useEffect(() => {
     getShieldMessage().then(setShieldDraft);
@@ -175,14 +173,14 @@ export default function SettingsScreen({
       detail: "Screen time and app detection",
       status: access.usage ? "Allowed" : "Required",
       icon: ShieldCheck,
-      onPress: () => void Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS"),
+      onPress: () => setUsageDisclosureOpen(true),
     },
     {
       title: "Accessibility",
       detail: "Immediate blocked-app redirect",
       status: access.accessibility ? "Allowed" : "Required",
       icon: Accessibility,
-      onPress: () => void Linking.sendIntent("android.settings.ACCESSIBILITY_SETTINGS"),
+      onPress: () => setAccessibilityDisclosureOpen(true),
     },
     {
       title: "Display over apps",
@@ -294,66 +292,42 @@ export default function SettingsScreen({
         </Text>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SHIELD MESSAGE</Text>
-        {!premiumReady ? null : isPremium ? (
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.shieldBody}>
-              <View style={styles.shieldHeader}>
-                <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                  <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowTitle, { color: colors.text }]}>
-                    Your words on the shield
-                  </Text>
-                  <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                    Shown when a locked app is opened. Leave it empty for TapIn&apos;s own line.
-                  </Text>
-                </View>
+        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.shieldBody}>
+            <View style={styles.shieldHeader}>
+              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+                <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowTitle, { color: colors.text }]}>
+                  Your words on the shield
+                </Text>
+                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                  Shown when a locked app is opened. Leave it empty for TapIn&apos;s own line.
+                </Text>
+              </View>
+            </View>
 
-              <TextInput
-                value={shieldDraft}
-                onChangeText={setShieldDraft}
-                onBlur={commitShieldMessage}
-                onSubmitEditing={commitShieldMessage}
-                returnKeyType="done"
-                multiline
-                maxLength={SHIELD_MESSAGE_MAX_LENGTH}
-                placeholder={DEFAULT_SHIELD_MESSAGE}
-                placeholderTextColor={colors.textDim}
-                style={[
-                  styles.shieldInput,
-                  { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border },
-                ]}
-              />
-              <Text style={{ color: colors.textDim, fontSize: 12, textAlign: "right" }}>
-                {shieldDraft.length} / {SHIELD_MESSAGE_MAX_LENGTH}
-              </Text>
-            </View>
+            <TextInput
+              value={shieldDraft}
+              onChangeText={setShieldDraft}
+              onBlur={commitShieldMessage}
+              onSubmitEditing={commitShieldMessage}
+              returnKeyType="done"
+              multiline
+              maxLength={SHIELD_MESSAGE_MAX_LENGTH}
+              placeholder={DEFAULT_SHIELD_MESSAGE}
+              placeholderTextColor={colors.textDim}
+              style={[
+                styles.shieldInput,
+                { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border },
+              ]}
+            />
+            <Text style={{ color: colors.textDim, fontSize: 12, textAlign: "right" }}>
+              {shieldDraft.length} / {SHIELD_MESSAGE_MAX_LENGTH}
+            </Text>
           </View>
-        ) : (
-          <Pressable
-            onPress={onUnlock}
-            style={({ pressed }) => [
-              styles.systemCard,
-              styles.row,
-              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.68 : 1 },
-            ]}
-          >
-            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-              <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.text }]}>
-                Your words on the shield
-              </Text>
-              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                Write what a locked app should say back to you. Premium.
-              </Text>
-            </View>
-            <Lock size={17} color={colors.textDim} strokeWidth={2.2} />
-          </Pressable>
-        )}
+        </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SYSTEM ACCESS</Text>
         <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -483,6 +457,28 @@ export default function SettingsScreen({
           <SheetStat label="Refills on" value={emergencyResetLabel()} />
         </View>
       </InfoSheet>
+
+      <AccessibilityDisclosure
+        visible={accessibilityDisclosureOpen}
+        onDecline={() => setAccessibilityDisclosureOpen(false)}
+        onAgree={() => {
+          setAccessibilityDisclosureOpen(false);
+          Linking.sendIntent("android.settings.ACCESSIBILITY_SETTINGS").catch(() =>
+            Linking.openSettings()
+          );
+        }}
+      />
+
+      <UsageAccessDisclosure
+        visible={usageDisclosureOpen}
+        onDecline={() => setUsageDisclosureOpen(false)}
+        onAgree={() => {
+          setUsageDisclosureOpen(false);
+          Linking.sendIntent("android.settings.USAGE_ACCESS_SETTINGS").catch(() =>
+            Linking.openSettings()
+          );
+        }}
+      />
     </Screen>
   );
 }

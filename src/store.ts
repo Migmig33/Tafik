@@ -20,7 +20,6 @@ const KEYS = {
   studInConfig: "studInConfig", // study minutes, break minutes, and rounds
   focusMode: "focusMode", // "tapin" or "studin"
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
-  premium: "premium", // "1" once the one-time unlock is owned
   shieldMessage: "shieldMessage", // the user's own words on the block overlay
 } as const;
 
@@ -82,21 +81,11 @@ async function setRegisteredCards(cards: RegisteredCard[]): Promise<void> {
   await AsyncStorage.setItem(KEYS.cardUid, JSON.stringify(cards.map(cleanCard)));
 }
 
-/**
- * Repeat the entitlement check here so a screen holding stale ownership state
- * cannot slip a second key into the free tier.
- */
-export async function addRegisteredCard(
-  card: RegisteredCard,
-  isPremium: boolean
-): Promise<RegisteredCard[]> {
+export async function addRegisteredCard(card: RegisteredCard): Promise<RegisteredCard[]> {
   const cards = await getRegisteredCards();
   const nextCard = cleanCard(card);
   if (cards.some(({ uid }) => uid === nextCard.uid)) {
     throw new Error("That card is already registered.");
-  }
-  if (!isPremium && cards.length >= 1) {
-    throw new Error("TapIn Premium is required to register more than one card.");
   }
   const next = [...cards, nextCard];
   await setRegisteredCards(next);
@@ -268,7 +257,7 @@ export async function getTodayStats(): Promise<TodayStats> {
 // trade-off we accept for staying fully on-device with no accounts.
 
 export const EMERGENCY_UNLOCKS_PER_MONTH = 3;
-export const EMERGENCY_HOLD_SECONDS = 30;
+export const EMERGENCY_HOLD_SECONDS = 45;
 
 type EmergencyRecord = { m: string; n: number };
 
@@ -348,36 +337,10 @@ export async function setWelcomeSeen(seen: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.welcomeSeen, seen ? "1" : "0");
 }
 
-// --- Premium ---------------------------------------------------------------
-// The entitlement plumbing remains the single source of truth so a future paid
-// feature can be switched on without rebuilding every gated surface.
-
-/**
- * v2 ships fully unlocked because insights history, custom shield copy, and
- * multiple cards do not justify a paid tier on their own. The gates stay
- * intentionally dormant behind this override; billing is deferred until a
- * substantial paid feature exists.
- */
-const PREMIUM_OVERRIDE: boolean | null = true;
-
-/** Whether the one-time Premium unlock is owned. */
-export async function getIsPremium(): Promise<boolean> {
-  if (PREMIUM_OVERRIDE !== null) return PREMIUM_OVERRIDE;
-  return (await AsyncStorage.getItem(KEYS.premium)) === "1";
-}
-
-/**
- * Record the entitlement locally. Called after a purchase or a restore — never
- * from the UI as a toggle, since owning Premium is the store's fact, not ours.
- */
-export async function setIsPremium(premium: boolean): Promise<void> {
-  await AsyncStorage.setItem(KEYS.premium, premium ? "1" : "0");
-}
-
 // --- Shield message --------------------------------------------------------
 // What the block overlay says when it catches you. TapIn's own line is fine,
 // but "you said you'd call your mum tonight" is the one that actually works,
-// so Premium lets the user write it themselves.
+// so the user can write it themselves.
 //
 // This is the JS-side source of truth; setShieldMessage mirrors it into
 // SharedPreferences (see syncShieldMessage) because the service that draws the

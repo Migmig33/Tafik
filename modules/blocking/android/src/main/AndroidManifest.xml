@@ -4,6 +4,16 @@
   <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+  <!-- TapIn only needs apps the user can launch and select for blocking. This
+       intent signature provides that narrow visibility without access to the
+       device's complete installed-package inventory. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+  </queries>
+
   <application>
     <service
       android:name="expo.modules.blocking.AccessibilityBlockService"

@@ -30,6 +30,11 @@ private data class AppScreenTimeEntry(
   val milliseconds: Long
 )
 
+private data class LaunchableAppEntry(
+  val name: String,
+  val pkg: String
+)
+
 // Two weeks, not one: the chart shows the last seven days, and the week-over-week
 // trend needs the seven before them to have something to compare against.
 private const val INSIGHT_DAYS = 14
@@ -275,37 +280,17 @@ class BlockingModule : Module() {
 
     AsyncFunction("getInstalledApps") {
       val context = requireNotNull(appContext.reactContext)
-      val packageManager = context.packageManager
-      packageManager.getInstalledApplications(0)
-        .asSequence()
-        .filter { it.packageName != context.packageName }
-        .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
-        .map {
-          mapOf(
-            "name" to packageManager.getApplicationLabel(it).toString(),
-            "pkg" to it.packageName
-          )
-        }
-        .sortedBy { it["name"]?.lowercase() }
-        .toList()
+      launchableApps(context).map { app ->
+        mapOf(
+          "name" to app.name,
+          "pkg" to app.pkg
+        )
+      }
     }
 
     AsyncFunction("getInstalledAppsWithIcons") {
       val context = requireNotNull(appContext.reactContext)
-      val packageManager = context.packageManager
-      val apps = packageManager.getInstalledApplications(0)
-        .asSequence()
-        .filter { it.packageName != context.packageName }
-        .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
-        .map {
-          AppScreenTimeEntry(
-            name = packageManager.getApplicationLabel(it).toString(),
-            pkg = it.packageName,
-            milliseconds = 0L
-          )
-        }
-        .sortedBy { it.name.lowercase() }
-        .toList()
+      val apps = launchableApps(context)
 
       JSONArray().apply {
         apps.forEach { app ->
@@ -319,6 +304,36 @@ class BlockingModule : Module() {
         }
       }.toString()
     }
+  }
+
+  /**
+   * Returns only apps with a launcher activity. The manifest's matching
+   * <queries> intent makes this set visible on Android 11+ without requesting
+   * QUERY_ALL_PACKAGES. A package may expose several launcher activities, so
+   * deduplicate before presenting it as one blocklist entry.
+   */
+  private fun launchableApps(context: Context): List<LaunchableAppEntry> {
+    val packageManager = context.packageManager
+    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+      addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+
+    @Suppress("DEPRECATION")
+    val activities = packageManager.queryIntentActivities(launcherIntent, 0)
+
+    return activities
+      .asSequence()
+      .map { it.activityInfo.applicationInfo }
+      .filter { it.packageName != context.packageName }
+      .distinctBy { it.packageName }
+      .map { application ->
+        LaunchableAppEntry(
+          name = packageManager.getApplicationLabel(application).toString(),
+          pkg = application.packageName
+        )
+      }
+      .sortedBy { it.name.lowercase(Locale.ROOT) }
+      .toList()
   }
 
   private fun requireBlockingPermissions(context: Context) {
