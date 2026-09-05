@@ -36,6 +36,7 @@ import WelcomeScreen from "./src/screens/WelcomeScreen";
 import {
   clearActiveSessionStartedAt,
   consumeEmergencyUnlock,
+  EMERGENCY_HOLD_SECONDS,
   getEmergencyUnlocksLeft,
   getActiveSessionStartedAt,
   getBlocklist,
@@ -51,6 +52,21 @@ import {
   setWelcomeSeen,
 } from "./src/store";
 import { ThemeProvider, useTheme } from "./src/theme";
+
+/**
+ * What starting a StudIn cycle actually commits the user to. Said before the
+ * cycle begins rather than discovered halfway through it: a Study interval is
+ * the one state in the app where tapping the card does nothing, and finding
+ * that out while locked out is the worst possible moment to learn it.
+ */
+function studInCommitment(unlocksLeft: number): string {
+  return (
+    "Once Study starts, your card will not end it. The card works again during a " +
+    "Break, and tapping it then ends the whole cycle.\n\n" +
+    `If you need out during Study, an emergency unlock is the only way. It takes a ` +
+    `${EMERGENCY_HOLD_SECONDS} second hold, and you have ${unlocksLeft} left this month.`
+  );
+}
 
 function AppContent() {
   const { colors, isDark } = useTheme();
@@ -300,6 +316,22 @@ function AppContent() {
   };
 
   /**
+   * Asks before a StudIn cycle begins. Wrapped in a promise because the caller
+   * has to wait on the answer before arming the reader, and Alert only speaks
+   * in callbacks. onDismiss covers the Android back gesture, which would
+   * otherwise leave this promise unresolved and the button dead.
+   */
+  const confirmStudIn = async (): Promise<boolean> => {
+    const unlocksLeft = await getEmergencyUnlocksLeft();
+    return new Promise((resolve) => {
+      Alert.alert("Start StudIn?", studInCommitment(unlocksLeft), [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Start StudIn", onPress: () => resolve(true) },
+      ], { onDismiss: () => resolve(false) });
+    });
+  };
+
+  /**
    * The way in when the card is not to hand. Offered only while a start read is
    * already open, so it is always a second, deliberate choice rather than
    * something you can hit by reflex from an idle screen.
@@ -332,14 +364,18 @@ function AppContent() {
     const [unlocksLeft, mode] = await Promise.all([getEmergencyUnlocksLeft(), getFocusMode()]);
     const studIn = mode === "studin";
     Alert.alert(
-      `Lock ${blockCount} ${blockCount === 1 ? "app" : "apps"}?`,
+      studIn ? "Start StudIn?" : `Lock ${blockCount} ${blockCount === 1 ? "app" : "apps"}?`,
       // The remaining allowance is named rather than described: an abstract
       // warning is easy to wave through, a number that is about to drop is not.
-      `Only your registered card can unlock them. Emergency unlock is the only other way out, and you have ${unlocksLeft} left this month.`,
+      // StudIn gets its own wording because promising that the card unlocks the
+      // apps would be a lie for the whole of a Study interval.
+      studIn
+        ? studInCommitment(unlocksLeft)
+        : `Only your registered card can unlock them. Emergency unlock is the only other way out, and you have ${unlocksLeft} left this month.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Lock apps",
+          text: studIn ? "Start StudIn" : "Lock apps",
           onPress: () => {
             void (async () => {
               // Drop the open read first. The tockIn call still waiting on it
@@ -416,10 +452,13 @@ function AppContent() {
     if (studIn && !hasStudInSessionSupport()) {
       Alert.alert(
         "Native rebuild required",
-        "This installed build does not include the StudIn timer service yet. Install a newly rebuilt APK, or switch back to LockIn in Settings."
+        "This installed build does not include the StudIn timer service yet. Install a newly rebuilt APK, or turn StudIn off in Settings to use the standard session."
       );
       return;
     }
+    // Asked before the reader is armed, so Cancel costs nothing. Once the card
+    // lands the cycle is already running and the answer would be too late.
+    if (studIn && !(await confirmStudIn())) return;
     if (!(await scanRegisteredCard(action === "start" && studIn ? "studin" : action))) return;
     try {
       if (action === "end") await endSession();

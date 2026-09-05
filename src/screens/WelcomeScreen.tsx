@@ -1,19 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, ScrollView, StyleSheet, View } from "react-native";
 import { BrandLockup, PrimaryButton } from "../components";
 import { useWhoosh } from "../sound";
+import {
+  type DistractionAnswer,
+  type ScreenTimeAnswer,
+  setWelcomeAnswers,
+  type WelcomeAnswers,
+} from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
+import {
+  DISTRACTION_OPTIONS,
+  DISTRACTION_QUESTION,
+  SCREEN_TIME_OPTIONS,
+  SCREEN_TIME_QUESTION,
+  welcomeLines,
+} from "../welcomeQuestions";
+import WelcomeQuestion from "./WelcomeQuestion";
 
-// The case for the app, made before the app asks for anything. Shown once, on
-// the very first launch, ahead of the permission onboarding.
-const LINES = [
-  "You opened it to check one thing.",
-  "Forty minutes later, you're still scrolling.",
-  "The feed has no bottom. That's not an accident.",
-  "Doomscrolling doesn't end on its own.",
-  "So we gave you an ending you can hold.",
-];
+/**
+ * The first launch, in three acts.
+ *
+ * The mark and Get started come first so the app introduces itself before it
+ * asks anything. Then two questions. Only then the story, written from the
+ * answers, so the case for the app is made in the user's own situation rather
+ * than a stranger's. Permissions come after all of it.
+ */
+type Phase = "brand" | "questions" | "story";
 
 // Keep the established story timing. Motion is layered onto the same fade,
 // hold, and fade-out sequence rather than making the intro longer or faster.
@@ -33,9 +47,16 @@ const FADE_CURVE = Easing.inOut(Easing.ease);
 export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => void }) {
   const { colors } = useTheme();
   const { play: playWhoosh, lockupMs } = useWhoosh();
+  const [phase, setPhase] = useState<Phase>("brand");
   const [index, setIndex] = useState(0);
   const [brandVisible, setBrandVisible] = useState(false);
   const [ctaReady, setCtaReady] = useState(false);
+  const [screenTime, setScreenTime] = useState<ScreenTimeAnswer | null>(null);
+  const [answers, setAnswers] = useState<WelcomeAnswers | null>(null);
+
+  // Fixed the moment the questions are done, so a re-render cannot reshuffle
+  // the story out from under a line that is already fading in.
+  const lines = useMemo(() => welcomeLines(answers), [answers]);
   const line = useRef(new Animated.Value(0)).current;
   const tagline = useRef(new Animated.Value(0)).current;
   const supportingCopy = useRef(new Animated.Value(0)).current;
@@ -46,10 +67,21 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
   const ctaAnimation = useRef<Animated.CompositeAnimation | null>(null);
   const idleAnimation = useRef<Animated.CompositeAnimation | null>(null);
 
-  const finishedLines = index >= LINES.length;
+  const finishedLines = index >= lines.length;
+
+  // The story hands straight over to the permission screens once its last line
+  // has faded, so there is no button to press at the end of a sentence. The
+  // latch is because the callback is rebuilt on every parent render, which
+  // would otherwise re-run this effect and write the seen flag twice.
+  const handedOff = useRef(false);
+  useEffect(() => {
+    if (phase !== "story" || !finishedLines || handedOff.current) return;
+    handedOff.current = true;
+    onGetStarted();
+  }, [finishedLines, onGetStarted, phase]);
 
   useEffect(() => {
-    if (finishedLines) return;
+    if (phase !== "story" || finishedLines) return;
 
     line.setValue(0);
     const animation = Animated.sequence([
@@ -72,13 +104,12 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
       if (finished) setIndex((current) => current + 1);
     });
     return () => animation.stop();
-  }, [finishedLines, index, line]);
+  }, [finishedLines, index, line, phase]);
 
-  // Let the final sentence fully clear before the story resolves into TockIn.
-  // The whoosh still begins at the exact moment BrandLockup appears.
+  // The mark now opens the app rather than resolving it, so the lockup and its
+  // whoosh fire on mount. The short pause is still there to let the screen
+  // settle before anything moves.
   useEffect(() => {
-    if (!finishedLines) return;
-
     finalPause.current = setTimeout(() => {
       setBrandVisible(true);
       playWhoosh();
@@ -87,7 +118,7 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
     return () => {
       if (finalPause.current) clearTimeout(finalPause.current);
     };
-  }, [finishedLines, playWhoosh]);
+  }, [playWhoosh]);
 
   const startIdleMotion = useCallback(() => {
     idleAnimation.current?.stop();
@@ -153,6 +184,19 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
     []
   );
 
+  // Written through on the second answer rather than one at a time, so a user
+  // who backs out mid-way leaves no half-answered pair behind.
+  const answerDistraction = useCallback(
+    (distraction: DistractionAnswer) => {
+      if (!screenTime) return;
+      const complete: WelcomeAnswers = { screenTime, distraction };
+      setAnswers(complete);
+      void setWelcomeAnswers(complete);
+      setPhase("story");
+    },
+    [screenTime]
+  );
+
   const lineOpacity = line.interpolate({
     inputRange: [0, 1, 2],
     outputRange: [0, 1, 0],
@@ -166,9 +210,37 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
     outputRange: [0.985, 1, 1],
   });
 
+  if (phase === "questions") {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.bg }]}>
+        {/* Keyed on the step so the second question remounts and plays its own
+            entrance instead of swapping text inside a settled screen. */}
+        {screenTime === null ? (
+          <WelcomeQuestion
+            key="screen-time"
+            step={1}
+            total={2}
+            question={SCREEN_TIME_QUESTION}
+            options={SCREEN_TIME_OPTIONS}
+            onAnswer={setScreenTime}
+          />
+        ) : (
+          <WelcomeQuestion
+            key="distraction"
+            step={2}
+            total={2}
+            question={DISTRACTION_QUESTION}
+            options={DISTRACTION_OPTIONS}
+            onAnswer={answerDistraction}
+          />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-      {finishedLines ? (
+      {phase === "brand" ? (
         <ScrollView
           style={styles.finalScroll}
           contentContainerStyle={styles.finalScrollContent}
@@ -254,7 +326,7 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
                 },
               ]}
             >
-              <PrimaryButton label="Get started" onPress={onGetStarted} />
+              <PrimaryButton label="Get started" onPress={() => setPhase("questions")} />
             </Animated.View>
           </View>
         </ScrollView>
@@ -269,12 +341,12 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
           <Text
             style={[
               styles.line,
-              index === LINES.length - 1
+              index === lines.length - 1
                 ? [styles.closingLine, { color: colors.text }]
                 : { color: colors.textDim },
             ]}
           >
-            {LINES[index]}
+            {lines[index]}
           </Text>
         </Animated.View>
       )}

@@ -149,7 +149,7 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Palette,
         title: "Appearance and mode",
         body:
-          "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle. LockIn, the strict mode, is on the way.",
+          "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
       },
       {
         icon: MessageSquareQuote,

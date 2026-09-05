@@ -299,9 +299,9 @@ export default function SettingsScreen({
               <LockKeyhole size={20} color={colors.textDim} strokeWidth={2.1} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.textDim }]}>LockIn</Text>
+              <Text style={[styles.rowTitle, { color: colors.textDim }]}>Strict Mode</Text>
               <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                A stricter session that resists being switched off.
+                A stricter version of every mode.
               </Text>
             </View>
             <Text style={[styles.rowStatus, { color: colors.textDim }]}>Coming soon</Text>

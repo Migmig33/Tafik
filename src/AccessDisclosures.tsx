@@ -1,7 +1,7 @@
 import Accessibility from "lucide-react-native/icons/accessibility";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import type { LucideIcon } from "lucide-react-native";
-import { Modal, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, View } from "react-native";
 import { GhostButton, PrimaryButton } from "./components";
 import { radius, space, useTheme } from "./theme";
 import { Text } from "./typography";
@@ -81,7 +81,7 @@ function AccessDisclosure({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onDecline}>
-      <SafeAreaView style={[styles.screen, { backgroundColor: colors.bg }]}>
+      <View style={[styles.screen, { backgroundColor: colors.bg }]}>
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
@@ -109,7 +109,7 @@ function AccessDisclosure({
           <PrimaryButton label="Agree and continue" onPress={onAgree} />
           <GhostButton label="Not now" onPress={onDecline} />
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }

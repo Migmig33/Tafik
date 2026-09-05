@@ -194,7 +194,7 @@ export default function HomeScreen({
         <View style={styles.focusCluster}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="TockIn to begin"
+            accessibilityLabel={studInMode ? "Tap in to start StudIn" : "Tap in to begin"}
             accessibilityState={{ disabled: waiting }}
             onPress={onTockIn}
             disabled={waiting}
@@ -211,7 +211,10 @@ export default function HomeScreen({
                 fontWeight: "600",
               }}
             >
-              {waiting ? "Ready to scan" : "TockIn to begin"}
+              {/* StudIn is named here rather than left to the tab bar icon,
+                  because it is the mode a card cannot end once Study starts.
+                  The button that begins it should say which one it is. */}
+              {waiting ? "Ready to scan" : studInMode ? "Tap in to start StudIn" : "Tap in to begin"}
             </Text>
             <Body dim>
               {waiting

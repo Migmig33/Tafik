@@ -22,6 +22,7 @@ const KEYS = {
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
   shieldMessage: "shieldMessage", // the user's own words on the block overlay
   guidesSeen: "guidesSeen", // screens whose first-visit walkthrough has been shown
+  welcomeAnswers: "welcomeAnswers", // the two first-run questions
 } as const;
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -138,8 +139,9 @@ export async function clearActiveSessionStartedAt(): Promise<void> {
 /**
  * Which session a card tap starts. "tockin" is the standard open-ended session
  * that runs until a card ends it, and is what the app does when no extra mode
- * is switched on. "studin" is the timed study/break cycle. LockIn, the strict
- * variant, is announced in Settings but has no value here until it ships.
+ * is switched on. "studin" is the timed study/break cycle. Strict Mode is
+ * announced in Settings as a stricter version of each of these rather than a
+ * mode of its own, so it will not add a value here when it ships.
  */
 export type FocusMode = "tockin" | "studin";
 
@@ -400,4 +402,55 @@ export async function markGuideSeen(key: string): Promise<void> {
 /** Forget every walkthrough so each tab introduces itself again on the next visit. */
 export async function resetGuides(): Promise<void> {
   await AsyncStorage.removeItem(KEYS.guidesSeen);
+}
+
+// --- First-run questions ---------------------------------------------------
+// Two questions asked once, between Get started and the opening story. The
+// answers pick which story the user is told, so the copy describes their own
+// habit rather than a generic one. They are kept because a story built on an
+// answer is worth nothing if the answer is thrown away the moment it is used.
+
+export type ScreenTimeAnswer = "light" | "moderate" | "heavy" | "extreme";
+export type DistractionAnswer =
+  | "doomscroll"
+  | "videos"
+  | "games"
+  | "messages"
+  | "notifications";
+export type WelcomeAnswers = {
+  screenTime: ScreenTimeAnswer;
+  distraction: DistractionAnswer;
+};
+
+const SCREEN_TIME_ANSWERS: ScreenTimeAnswer[] = ["light", "moderate", "heavy", "extreme"];
+const DISTRACTION_ANSWERS: DistractionAnswer[] = [
+  "doomscroll",
+  "videos",
+  "games",
+  "messages",
+  "notifications",
+];
+
+/** Null when the questions were never answered, so callers can fall back. */
+export async function getWelcomeAnswers(): Promise<WelcomeAnswers | null> {
+  const raw = await AsyncStorage.getItem(KEYS.welcomeAnswers);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<WelcomeAnswers>;
+    // Validated rather than trusted: an answer set written by an older build
+    // could name an option this version no longer has.
+    if (
+      SCREEN_TIME_ANSWERS.includes(parsed?.screenTime as ScreenTimeAnswer) &&
+      DISTRACTION_ANSWERS.includes(parsed?.distraction as DistractionAnswer)
+    ) {
+      return parsed as WelcomeAnswers;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setWelcomeAnswers(answers: WelcomeAnswers): Promise<void> {
+  await AsyncStorage.setItem(KEYS.welcomeAnswers, JSON.stringify(answers));
 }
