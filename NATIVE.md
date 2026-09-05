@@ -18,7 +18,7 @@ records its architecture and constraints for future maintenance.
    (`WindowManager` + `TYPE_APPLICATION_OVERLAY`, requires `SYSTEM_ALERT_WINDOW`).
    The overlay is the shield and is drawn directly by `ForegroundBlockService.kt`.
 4. **Own session state.** Start/stop shielding on command from JS, and keep the
-   persistent foreground notification alive while a session runs. TapIn remains
+   persistent foreground notification alive while a session runs. TockIn remains
    open-ended. StudIn derives Study and Break phases from its persisted start
    time, durations, and round count; the native watchdog releases restrictions
    during Break and reapplies them at the next Study without waking JS.
@@ -29,11 +29,11 @@ records its architecture and constraints for future maintenance.
 
 ## Accessibility policy
 
-TapIn declares `isAccessibilityTool="false"`. Before opening Android's
+TockIn declares `isAccessibilityTool="false"`. Before opening Android's
 Accessibility settings, onboarding displays a separate disclosure and asks for
 affirmative consent. A Play release must include the Accessibility declaration
 and reviewer video. The service performs only deterministic, user-configured
-blocking and cannot prevent the user from disabling or uninstalling TapIn.
+blocking and cannot prevent the user from disabling or uninstalling TockIn.
 
 ## JS ↔ native interface (Expo Modules API)
 

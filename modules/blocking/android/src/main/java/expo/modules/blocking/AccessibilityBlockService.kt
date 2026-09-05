@@ -19,7 +19,7 @@ class AccessibilityBlockService : AccessibilityService() {
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     if (event == null || event.eventType !in ENFORCEMENT_EVENTS) return
-    // TapIn blocks for its whole session. StudIn blocks only during Study;
+    // TockIn blocks for its whole session. StudIn blocks only during Study;
     // Break remains deliberately unrestricted.
     if (!BlockingPreferences.shouldBlockNow(this)) {
       clearRedirectState()

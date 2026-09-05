@@ -69,7 +69,7 @@ function AppContent() {
   const [blockCount, setBlockCount] = useState(0);
   // Held here rather than read per screen so the tab bar's centre button and
   // home's circle always show the same mode at the same moment.
-  const [focusMode, setFocusMode] = useState<FocusMode>("tapin");
+  const [focusMode, setFocusMode] = useState<FocusMode>("tockin");
   // Which read is open, if any. Arming the reader stays a deliberate step so a
   // stray card cannot lock or unlock the phone; the tab bar's centre button is
   // what arms it, and home renders the feedback.
@@ -293,10 +293,72 @@ function AppContent() {
       return false;
     }
     if (!cards.some((card) => card.uid === result.uid)) {
-      Alert.alert("Different card", "That card isn't registered with TapIn.");
+      Alert.alert("Different card", "That card isn't registered with TockIn.");
       return false;
     }
     return true;
+  };
+
+  /**
+   * The way in when the card is not to hand. Offered only while a start read is
+   * already open, so it is always a second, deliberate choice rather than
+   * something you can hit by reflex from an idle screen.
+   *
+   * Tapping a card stays the ordinary path and keeps no confirmation of its
+   * own: fetching the card and holding it to the phone is already the
+   * deliberate act this dialog exists to reproduce.
+   */
+  const startWithoutCard = async () => {
+    // A session with no registered card has no ordinary way out at all, so the
+    // card has to exist even on the path that never reads one.
+    if ((await getRegisteredCards()).length === 0) {
+      Alert.alert(
+        "Register a card first",
+        "TockIn will not start a session you have no way to end. Register a card, and after that you can start without tapping it.",
+        [
+          { text: "Not now", style: "cancel" },
+          {
+            text: "Register card",
+            onPress: () => {
+              void cancelCardRead();
+              setScreen("cardSetup");
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    const [unlocksLeft, mode] = await Promise.all([getEmergencyUnlocksLeft(), getFocusMode()]);
+    const studIn = mode === "studin";
+    Alert.alert(
+      `Lock ${blockCount} ${blockCount === 1 ? "app" : "apps"}?`,
+      // The remaining allowance is named rather than described: an abstract
+      // warning is easy to wave through, a number that is about to drop is not.
+      `Only your registered card can unlock them. Emergency unlock is the only other way out, and you have ${unlocksLeft} left this month.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Lock apps",
+          onPress: () => {
+            void (async () => {
+              // Drop the open read first. The tockIn call still waiting on it
+              // sees a cancelled scan and bails, so nothing starts twice.
+              await cancelCardRead();
+              try {
+                if (studIn) await startStudIn();
+                else await startSession();
+              } catch (e: any) {
+                Alert.alert(
+                  studIn ? "StudIn couldn't start" : "TockIn couldn't lock apps",
+                  e?.message ?? "Please try again."
+                );
+              }
+            })();
+          },
+        },
+      ]
+    );
   };
 
   // A break is the one point in a StudIn cycle where the card works again.
@@ -327,7 +389,7 @@ function AppContent() {
   // The one primary action, wherever the user is: arm the reader, then let the
   // card decide whether this starts or ends a session. Lives here rather than
   // on home because the button that triggers it is in the tab bar.
-  const tapIn = async () => {
+  const tockIn = async () => {
     if (scanning) return;
     // A running StudIn cycle owns the card: during Study it is inert, and
     // during a break it ends the cycle from the StudIn screen itself.
@@ -349,7 +411,7 @@ function AppContent() {
       return;
     }
     // One card, one tap, and Settings decides which session it opens.
-    const focusMode = action === "start" ? await getFocusMode() : "tapin";
+    const focusMode = action === "start" ? await getFocusMode() : "tockin";
     const studIn = focusMode === "studin";
     if (studIn && !hasStudInSessionSupport()) {
       Alert.alert(
@@ -365,7 +427,7 @@ function AppContent() {
       else await startSession();
     } catch (e: any) {
       Alert.alert(
-        studIn ? "StudIn couldn't start" : "TapIn couldn't lock apps",
+        studIn ? "StudIn couldn't start" : "TockIn couldn't lock apps",
         e?.message ?? "Please try again."
       );
     }
@@ -397,7 +459,7 @@ function AppContent() {
         {screen === "onboarding" && <OnboardingScreen nav={setScreen} />}
         {/* A StudIn read is still a start read as far as home is concerned, so
             it gets the same expanding rings and the same "hold your card" copy
-            as an ordinary TapIn scan. */}
+            as an ordinary TockIn scan. */}
         {screen === "home" && (
           <HomeScreen
             nav={setScreen}
@@ -406,7 +468,8 @@ function AppContent() {
             blockCount={blockCount}
             focusMode={focusMode}
             scanning={scanning === "end" ? "end" : scanning === null ? null : "start"}
-            onTapIn={() => void tapIn()}
+            onTockIn={() => void tockIn()}
+            onStartWithoutCard={() => void startWithoutCard()}
           />
         )}
         {screen === "studin" && (
@@ -440,7 +503,7 @@ function AppContent() {
           <EmergencyScreen
             nav={setScreen}
             active={active}
-            sessionMode={studInSession?.mode === "studin" ? "studin" : "tapin"}
+            sessionMode={studInSession?.mode === "studin" ? "studin" : "tockin"}
             onUnlock={emergencyUnlock}
           />
         )}
@@ -452,7 +515,7 @@ function AppContent() {
           <BottomNav
             current={screen}
             nav={setScreen}
-            onTapIn={() => void tapIn()}
+            onTockIn={() => void tockIn()}
             onCancel={() => void cancelCardRead()}
             active={active}
             scanning={scanning !== null}

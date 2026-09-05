@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   AppState,
   Easing,
@@ -14,9 +15,11 @@ import Bell from "lucide-react-native/icons/bell";
 import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import FileText from "lucide-react-native/icons/file-text";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
 import Layers from "lucide-react-native/icons/layers";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
 import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
+import Mail from "lucide-react-native/icons/mail";
 import Monitor from "lucide-react-native/icons/monitor";
 import Moon from "lucide-react-native/icons/moon";
 import ScanLine from "lucide-react-native/icons/scan-line";
@@ -24,6 +27,7 @@ import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Star from "lucide-react-native/icons/star";
 import Sun from "lucide-react-native/icons/sun";
+import UserRound from "lucide-react-native/icons/user-round";
 import type { LucideIcon } from "lucide-react-native";
 import { AccessibilityDisclosure, UsageAccessDisclosure } from "../AccessDisclosures";
 import {
@@ -32,6 +36,7 @@ import {
   hasUsageAccess,
 } from "../blocking";
 import { Body, InfoSheet, Screen, Title } from "../components";
+import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import {
   EMERGENCY_HOLD_SECONDS,
   EMERGENCY_UNLOCKS_PER_MONTH,
@@ -41,6 +46,7 @@ import {
   getEmergencyUnlocksLeft,
   getFocusMode,
   getShieldMessage,
+  resetGuides,
   setFocusMode,
   setShieldMessage,
   SHIELD_MESSAGE_MAX_LENGTH,
@@ -48,9 +54,17 @@ import {
 import { radius, space, ThemeMode, useTheme } from "../theme";
 import { Text, TextInput } from "../typography";
 
-// Empty until TapIn is published. Filling this in is all that is needed to
+// Empty until TockIn is published. Filling this in is all that is needed to
 // make the rate row open its store listing.
 const PLAY_STORE_URL = "";
+
+/**
+ * Who to write to. Kept next to the store URL because both are the app's
+ * outward-facing contact details, and both belong in one place when they
+ * change. This address is also the one named in the privacy policy.
+ */
+const DEVELOPER_NAME = "KupDevs";
+const DEVELOPER_EMAIL = "kupdevs@gmail.com";
 
 /** The two outbound links, and what to say while there is nowhere to go yet. */
 type AboutLink = {
@@ -67,19 +81,19 @@ const aboutLinks: AboutLink[] = [
   {
     key: "privacy",
     title: "Privacy policy",
-    detail: "How TapIn handles data and permissions.",
+    detail: "How TockIn handles data and permissions.",
     url: "",
     icon: FileText,
     pending: "",
   },
   {
     key: "rate",
-    title: "Rate TapIn",
+    title: "Rate TockIn",
     detail: "Leave a review on Google Play.",
     url: PLAY_STORE_URL,
     icon: Star,
     pending:
-      "TapIn is not on Google Play yet. Once it is published this row will open " +
+      "TockIn is not on Google Play yet. Once it is published this row will open " +
       "its store listing so you can leave a review.",
   },
 ];
@@ -102,6 +116,10 @@ export default function SettingsScreen({
   onModeChange?: (mode: FocusMode) => void;
 }) {
   const { colors, mode, setMode } = useTheme();
+  const guide = useScreenGuide("settings");
+  // Only for the row that replays them: the tick is a confirmation that the
+  // press did something, since the other tabs are where the effect shows up.
+  const [guidesReset, setGuidesReset] = useState(false);
   const [access, setAccess] = useState<AccessState>({
     usage: false,
     accessibility: false,
@@ -109,7 +127,7 @@ export default function SettingsScreen({
   });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
   const [shieldDraft, setShieldDraft] = useState("");
-  const [focusMode, setFocusModeState] = useState<FocusMode>("tapin");
+  const [focusMode, setFocusModeState] = useState<FocusMode>("tockin");
   // The row only has room for a summary, so the rest of the explanation lives
   // in a sheet the row opens.
   const [emergencyInfoOpen, setEmergencyInfoOpen] = useState(false);
@@ -117,6 +135,7 @@ export default function SettingsScreen({
   const [pendingLink, setPendingLink] = useState<AboutLink | null>(null);
   const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
   const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
+  const [developerOpen, setDeveloperOpen] = useState(false);
 
   useEffect(() => {
     getShieldMessage().then(setShieldDraft);
@@ -190,7 +209,7 @@ export default function SettingsScreen({
       onPress: () => void Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION"),
     },
     {
-      title: "TapIn cards",
+      title: "TockIn cards",
       detail: "Add or remove your NFC keys",
       status: "Open",
       icon: ScanLine,
@@ -208,9 +227,12 @@ export default function SettingsScreen({
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: space(2) }}>
-        <Title>Settings</Title>
+        <View style={styles.header}>
+          <Title>Settings</Title>
+          <GuideButton label="Settings" onPress={guide.open} />
+        </View>
         <View style={{ height: space(0.75) }} />
-        <Body dim>Make TapIn feel right for you.</Body>
+        <Body dim>Make TockIn feel right for you.</Body>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>APPEARANCE</Text>
         <View style={[styles.appearanceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -244,7 +266,7 @@ export default function SettingsScreen({
             accessibilityRole="switch"
             accessibilityState={{ checked: studInOn }}
             accessibilityLabel="StudIn mode"
-            onPress={() => chooseMode(studInOn ? "tapin" : "studin")}
+            onPress={() => chooseMode(studInOn ? "tockin" : "studin")}
             style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
           >
             <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
@@ -303,7 +325,7 @@ export default function SettingsScreen({
                   Your words on the shield
                 </Text>
                 <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Shown when a locked app is opened. Leave it empty for TapIn&apos;s own line.
+                  Shown when a locked app is opened. Leave it empty for TockIn&apos;s own line.
                 </Text>
               </View>
             </View>
@@ -421,8 +443,65 @@ export default function SettingsScreen({
               </Pressable>
             );
           })}
+
+          {/* TockIn asks for the three most invasive permissions Android has, so
+              a name and a way to reach it is a trust signal rather than a
+              credit. An anonymous app with this permission set reads as
+              something to uninstall. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="About the developer"
+            onPress={() => setDeveloperOpen(true)}
+            style={({ pressed }) => [
+              styles.row,
+              { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+              { opacity: pressed ? 0.68 : 1 },
+            ]}
+          >
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <UserRound size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Developer</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                Who made TockIn, and how to get in touch.
+              </Text>
+            </View>
+            <ChevronRight size={17} color={colors.textDim} />
+          </Pressable>
+
+          {/* Sits with the links rather than in its own section: it is a thing
+              to read again, not a setting that changes how TockIn behaves. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show the tab guides again"
+            onPress={() => {
+              void resetGuides();
+              setGuidesReset(true);
+            }}
+            style={({ pressed }) => [
+              styles.row,
+              { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+              { opacity: pressed ? 0.68 : 1 },
+            ]}
+          >
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <CircleQuestionMark size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Show tips again</Text>
+              <Text style={[styles.rowDetail, { color: colors.textDim }]}>
+                {guidesReset ? "Each tab will explain itself again." : "Replay the guide on every tab."}
+              </Text>
+            </View>
+            <Text style={[styles.rowStatus, { color: colors.accent }]}>
+              {guidesReset ? "Ready" : "Replay"}
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
+
+      <GuideSheet guide="settings" visible={guide.visible} onClose={guide.close} />
 
       <InfoSheet
         visible={pendingLink !== null}
@@ -432,6 +511,47 @@ export default function SettingsScreen({
         body={pendingLink?.pending ?? ""}
         muted
       />
+
+      <InfoSheet
+        visible={developerOpen}
+        onClose={() => setDeveloperOpen(false)}
+        icon={UserRound}
+        title={DEVELOPER_NAME}
+        // First person and plainly written on purpose. This is the one place in
+        // the app that is meant to sound like a person rather than a product.
+        body={
+          "KupDevs is the solo software studio behind TockIn. TockIn was built by a 4th year " +
+          "student from Adamson University who wanted to make focusing simpler. Instead of " +
+          "relying on willpower, you just tap. Your distracting apps lock, and they stay locked " +
+          "until you tap again."
+        }
+      >
+        <Text style={[styles.thanks, { color: colors.textDim }]}>
+          Thank you for supporting TockIn. Your purchase goes straight to an independent student
+          developer and makes continued improvements possible.
+        </Text>
+
+        {/* A tappable address rather than text to copy out by hand, since the
+            whole point of the row is that reaching a person is easy. */}
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`Email ${DEVELOPER_EMAIL}`}
+          onPress={() => {
+            Linking.openURL(`mailto:${DEVELOPER_EMAIL}`).catch(() =>
+              Alert.alert("No mail app", `Write to ${DEVELOPER_EMAIL} from any email app.`)
+            );
+          }}
+          style={({ pressed }) => [
+            styles.contactRow,
+            { borderColor: colors.border, opacity: pressed ? 0.65 : 1 },
+          ]}
+        >
+          <Mail size={17} color={colors.accent} strokeWidth={2.1} />
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: "500" }}>
+            {DEVELOPER_EMAIL}
+          </Text>
+        </Pressable>
+      </InfoSheet>
 
       <InfoSheet
         visible={emergencyInfoOpen}
@@ -542,6 +662,12 @@ function SheetStat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1.5),
+  },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
@@ -604,6 +730,24 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Sits between the bio and the contact row, so the thanks lands before the
+  // one thing on the sheet that asks the reader to do something.
+  thanks: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: space(1.5),
+  },
+  contactRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space(1),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.input,
+    paddingHorizontal: space(1.5),
   },
   pendingIconBox: {
     borderWidth: StyleSheet.hairlineWidth,

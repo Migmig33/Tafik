@@ -1,4 +1,4 @@
-package com.kupdevs.tapin
+package com.kupdevs.tockin
 
 import android.app.Application
 import android.content.res.Configuration

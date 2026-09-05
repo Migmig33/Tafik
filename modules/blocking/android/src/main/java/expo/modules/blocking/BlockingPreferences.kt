@@ -22,7 +22,7 @@ internal data class StudInResult(
 )
 
 internal object BlockingPreferences {
-  private const val FILE = "tapped_in_blocking"
+  private const val FILE = "tockin_blocking"
   private const val ACTIVE = "active"
   private const val BLOCKLIST = "blocklist"
   private const val APPEARANCE = "appearance"
@@ -36,7 +36,7 @@ internal object BlockingPreferences {
   private const val PENDING_STUDIN_COMPLETED = "pendingStudInCompleted"
 
   const val MODE_NONE = "none"
-  const val MODE_TAPIN = "tapin"
+  const val MODE_TOCKIN = "tockin"
   const val MODE_STUDIN = "studin"
   const val PHASE_STUDY = "study"
   const val PHASE_BREAK = "break"
@@ -53,7 +53,7 @@ internal object BlockingPreferences {
     prefs(context).edit()
       .putBoolean(ACTIVE, true)
       .putStringSet(BLOCKLIST, packages.toSet())
-      .putString(SESSION_MODE, MODE_TAPIN)
+      .putString(SESSION_MODE, MODE_TOCKIN)
       .putLong(SESSION_STARTED_AT, System.currentTimeMillis())
       .commit()
   }
@@ -92,7 +92,7 @@ internal object BlockingPreferences {
 
   fun shouldBlockNow(context: Context): Boolean {
     val state = sessionState(context)
-    return state.active && (state.mode == MODE_TAPIN || state.phase == PHASE_STUDY)
+    return state.active && (state.mode == MODE_TOCKIN || state.phase == PHASE_STUDY)
   }
 
   /**
@@ -105,12 +105,12 @@ internal object BlockingPreferences {
     val preferences = prefs(context)
     if (!preferences.getBoolean(ACTIVE, false)) return inactiveState()
 
-    val mode = preferences.getString(SESSION_MODE, MODE_TAPIN) ?: MODE_TAPIN
+    val mode = preferences.getString(SESSION_MODE, MODE_TOCKIN) ?: MODE_TOCKIN
     val startedAt = preferences.getLong(SESSION_STARTED_AT, now)
     if (mode != MODE_STUDIN) {
       return BlockingSessionState(
         active = true,
-        mode = MODE_TAPIN,
+        mode = MODE_TOCKIN,
         phase = null,
         currentRound = 0,
         totalRounds = 0,
@@ -185,7 +185,7 @@ internal object BlockingPreferences {
     prefs(context).edit().putString(APPEARANCE, mode).apply()
   }
 
-  /** The user's own words for the shield. Blank means "use TapIn's line". */
+  /** The user's own words for the shield. Blank means "use TockIn's line". */
   fun setShieldMessage(context: Context, message: String) {
     prefs(context).edit()
       .putString(SHIELD_MESSAGE, message.trim().take(SHIELD_MESSAGE_MAX_LENGTH))

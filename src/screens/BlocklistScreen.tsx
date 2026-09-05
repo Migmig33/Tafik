@@ -13,12 +13,14 @@ import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Search from "lucide-react-native/icons/search";
 import { getInstalledApps, InstalledApp } from "../blocking";
 import { Body, Screen, Title } from "../components";
+import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import { getBlocklist, setBlocklist } from "../store";
 import { radius, space, useTheme } from "../theme";
 import { Text, TextInput } from "../typography";
 
 export default function BlocklistScreen() {
   const { colors } = useTheme();
+  const guide = useScreenGuide("blocklist");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [apps, setApps] = useState<InstalledApp[]>([]);
@@ -32,7 +34,7 @@ export default function BlocklistScreen() {
       setApps(await getInstalledApps());
     } catch (error: any) {
       setApps([]);
-      setLoadError(error?.message ?? "TapIn couldn't load your app icons.");
+      setLoadError(error?.message ?? "TockIn couldn't load your app icons.");
     } finally {
       setLoading(false);
     }
@@ -61,7 +63,10 @@ export default function BlocklistScreen() {
 
   return (
     <Screen>
-      <Title>Blocklist</Title>
+      <View style={styles.header}>
+        <Title>Blocklist</Title>
+        <GuideButton label="the blocklist" onPress={guide.open} />
+      </View>
       <View style={{ height: space(0.75) }} />
       <Body dim>Choose the apps that should disappear while you focus.</Body>
       <View style={{ height: space(2.5) }} />
@@ -147,11 +152,19 @@ export default function BlocklistScreen() {
           )}
         />
       )}
+
+      <GuideSheet guide="blocklist" visible={guide.visible} onClose={guide.close} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(1.5),
+  },
   search: {
     minHeight: 50,
     flexDirection: "row",

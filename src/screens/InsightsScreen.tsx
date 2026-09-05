@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Svg, { Circle, Line, Path, Polyline } from "react-native-svg";
+import CalendarDays from "lucide-react-native/icons/calendar-days";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Hourglass from "lucide-react-native/icons/hourglass";
+import Nfc from "lucide-react-native/icons/nfc";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import Timer from "lucide-react-native/icons/timer";
 import TrendingDown from "lucide-react-native/icons/trending-down";
@@ -12,6 +15,7 @@ import type { LucideIcon } from "lucide-react-native";
 import { UsageAccessDisclosure } from "../AccessDisclosures";
 import { AppScreenTime, getInstalledApps, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
 import { Screen, Title } from "../components";
+import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import { getSessions, SessionRecord, todayKey } from "../store";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
@@ -19,23 +23,53 @@ import { Text } from "../typography";
 type Period = "today" | "yesterday" | "week";
 type FocusDay = { date: string; seconds: number; sessions: number };
 
-/** Days the chart covers, and the size of each half of the trend comparison. */
+/** Which line the weekly chart is drawing. */
+type Series = "focus" | "screen";
+/** One day of whichever series is on show, which is all the line needs. */
+type TrendPoint = { date: string; seconds: number };
+
+const SERIES_OPTIONS: { value: Series; label: string }[] = [
+  { value: "focus", label: "TockedIn" },
+  { value: "screen", label: "Screen time" },
+];
+
+/** Days the chart covers, and the window the weekly comparison averages. */
 const WEEK = 7;
 const APP_PREVIEW_COUNT = 4;
+
+/**
+ * Complete days needed before TockIn will claim a saving. Two days is a mood;
+ * three is the least that can pass for a habit, and the card says so rather
+ * than quietly showing a number built on one day.
+ */
+const MIN_BASELINE_DAYS = 3;
+
+/**
+ * The focus line's box. The top inset is the room a value label needs above the
+ * highest point of the week, so the peak day is never clipped by the card.
+ */
+const FOCUS_CHART_HEIGHT = 148;
+const FOCUS_CHART_TOP = 26;
+const FOCUS_CHART_BOTTOM = 12;
+
+/** Screen time either side of a comparison, in seconds per day. */
+type Saving = {
+  current: number;
+  baseline: number;
+  /** How many days the baseline averages, which is also what gates the card. */
+  baselineDays: number;
+  /** Today is still accumulating, so its gap narrows as the day goes on. */
+  partial: boolean;
+};
+
+/** Average screen time on the days a focus session ran, against the rest. */
+type TockInEffect = { tapped: number; rest: number };
 
 function duration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-}
-
-/** Narrow two-line value that fits above one column of the seven-day chart. */
-function chartDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours === 0) return `${minutes}m`;
-  return minutes === 0 ? `${hours}h` : `${hours}h\n${minutes}m`;
 }
 
 function dayName(date: string): string {
@@ -89,8 +123,30 @@ function focusWeek(sessions: SessionRecord[], now = new Date()): FocusDay[] {
   });
 }
 
+/**
+ * Complete calendar days only. Today is still filling up, so averaging it into
+ * a baseline would drag that baseline below the days it is meant to describe.
+ */
+function completedDays(days: ScreenTimeDay[], now = new Date()): ScreenTimeDay[] {
+  const today = todayKey(now);
+  return days.filter((day) => day.date !== "" && day.date !== today);
+}
+
+/** Mean screen time per day. The unit every comparison on this screen uses. */
+function dailyMean(days: ScreenTimeDay[]): number {
+  if (days.length === 0) return 0;
+  return Math.round(days.reduce((total, day) => total + day.seconds, 0) / days.length);
+}
+
+function dayKeyBefore(daysBack: number, now = new Date()): string {
+  const cursor = new Date(now);
+  cursor.setDate(cursor.getDate() - daysBack);
+  return todayKey(cursor);
+}
+
 export default function InsightsScreen() {
   const { colors } = useTheme();
+  const guide = useScreenGuide("insights");
   const [period, setPeriod] = useState<Period>("today");
   const [showAllApps, setShowAllApps] = useState(false);
   const [days, setDays] = useState<ScreenTimeDay[] | null | undefined>(undefined);
@@ -170,19 +226,68 @@ export default function InsightsScreen() {
 
   const focusWeekDays = useMemo(() => focusWeek(sessions ?? []), [sessions]);
 
-  // Week over week. Older builds only return seven days, so there is nothing to
-  // compare against and the card is left out rather than shown as a flat zero.
-  const trend = useMemo(() => {
-    if (!days || days.length < WEEK * 2) return null;
-    const previous = days.slice(-WEEK * 2, -WEEK).reduce((total, day) => total + day.seconds, 0);
-    const current = chartDays.reduce((total, day) => total + day.seconds, 0);
-    if (previous === 0) return null;
+  /**
+   * The selected period against the user's own usual day. The baseline is
+   * always "every other complete day TockIn has recorded", which is one rule
+   * that holds for all three periods and degrades gracefully when the native
+   * module only returns seven days instead of fourteen.
+   */
+  const saving = useMemo<Saving | null>(() => {
+    if (!days?.length) return null;
+    const complete = completedDays(days);
+
+    if (period === "today") {
+      const current = days.find((day) => day.date === todayKey());
+      if (!current) return null;
+      return {
+        current: current.seconds,
+        baseline: dailyMean(complete),
+        baselineDays: complete.length,
+        partial: true,
+      };
+    }
+
+    if (period === "yesterday") {
+      const key = dayKeyBefore(1);
+      const current = complete.find((day) => day.date === key);
+      if (!current) return null;
+      const rest = complete.filter((day) => day.date !== key);
+      return {
+        current: current.seconds,
+        baseline: dailyMean(rest),
+        baselineDays: rest.length,
+        partial: false,
+      };
+    }
+
+    // Per day on both sides, so a seven-day window can be compared with a
+    // baseline that may hold six days or thirteen.
+    const window = complete.slice(-WEEK);
+    if (window.length === 0) return null;
+    const rest = complete.slice(0, -WEEK);
     return {
-      current,
-      previous,
-      percent: Math.round(((current - previous) / previous) * 100),
+      current: dailyMean(window),
+      baseline: dailyMean(rest),
+      baselineDays: rest.length,
+      partial: false,
     };
-  }, [days, chartDays]);
+  }, [days, period]);
+
+  /**
+   * The question the whole screen is really about: does tapping in change the
+   * day? Answered by splitting the recorded days on whether a session ran,
+   * which needs no baseline and cannot be skewed by a partial today.
+   */
+  const tockInEffect = useMemo<TockInEffect | null>(() => {
+    if (!days?.length || !sessions) return null;
+    const ran = new Set(sessions.filter((session) => session.s > 0).map((session) => session.d));
+    const complete = completedDays(days);
+    const tapped = complete.filter((day) => ran.has(day.date));
+    const rest = complete.filter((day) => !ran.has(day.date));
+    // One day either side is an anecdote. Two is the least that can average.
+    if (tapped.length < 2 || rest.length < 2) return null;
+    return { tapped: dailyMean(tapped), rest: dailyMean(rest) };
+  }, [days, sessions]);
 
   const periodLabel = period === "today" ? "Today" : period === "yesterday" ? "Yesterday" : "Last 7 days";
 
@@ -196,7 +301,10 @@ export default function InsightsScreen() {
               Understand where your time goes.
             </Text>
           </View>
-          <ChartNoAxesCombined size={25} color={colors.accent} strokeWidth={2.2} />
+          <View style={styles.headerActions}>
+            <GuideButton label="Insights" onPress={guide.open} />
+            <ChartNoAxesCombined size={25} color={colors.accent} strokeWidth={2.2} />
+          </View>
         </View>
 
         <View style={[styles.segment, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -219,13 +327,20 @@ export default function InsightsScreen() {
           })}
         </View>
 
+        {/* TockIn's own numbers lead, then the week's shape, and the screen-time
+            card closes with what that shape adds up to. */}
         <FocusSummaryCard
           label={periodLabel}
           seconds={focusSummary?.seconds}
           sessions={focusSummary?.count}
         />
+
         {period === "week" && sessions !== undefined ? (
-          <TappedInWeekChart days={focusWeekDays} />
+          <WeekTrendChart
+            focus={focusWeekDays}
+            screen={days}
+            onRequestScreenTime={() => setUsageDisclosureOpen(true)}
+          />
         ) : null}
 
         {error ? (
@@ -234,7 +349,7 @@ export default function InsightsScreen() {
             <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{error}</Text>
           </View>
         ) : days === undefined ? (
-          <Text style={{ color: colors.textDim, marginTop: space(4) }}>Loading screen time…</Text>
+          <Text style={{ color: colors.textDim, marginBottom: space(3) }}>Loading screen time…</Text>
         ) : days === null ? (
           <Pressable
             onPress={() => setUsageDisclosureOpen(true)}
@@ -244,15 +359,24 @@ export default function InsightsScreen() {
             <Text style={{ color: colors.textDim, fontSize: 13, marginTop: 5 }}>Tap to open Android settings.</Text>
           </Pressable>
         ) : (
-          <>
-            <TotalCard label={periodLabel} value={duration(summary.seconds)} />
-            {period === "week" && (
-              <>
-                <WeekChart days={chartDays} />
-                {trend && <TrendCard percent={trend.percent} />}
-              </>
-            )}
+          <ScreenTimeCard
+            periodLabel={periodLabel}
+            total={summary.seconds}
+            saving={saving}
+            label={
+              period === "today"
+                ? "Today so far"
+                : period === "yesterday"
+                  ? "Yesterday"
+                  : "Last 7 days"
+            }
+            perDay={period === "week"}
+            effect={tockInEffect}
+          />
+        )}
 
+        {days ? (
+          <>
             <View style={styles.listHeader}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>App usage</Text>
               <Text style={{ color: colors.textDim, fontSize: 13 }}>{summary.apps.length} apps</Text>
@@ -307,8 +431,10 @@ export default function InsightsScreen() {
               ) : null}
             </View>
           </>
-        )}
+        ) : null}
       </ScrollView>
+
+      <GuideSheet guide="insights" visible={guide.visible} onClose={guide.close} />
 
       <UsageAccessDisclosure
         visible={usageDisclosureOpen}
@@ -324,7 +450,7 @@ export default function InsightsScreen() {
   );
 }
 
-/** TapIn's own completed focus sessions for the period selected above. */
+/** TockIn's own completed focus sessions for the period selected above. */
 function FocusSummaryCard({
   label,
   seconds,
@@ -338,7 +464,7 @@ function FocusSummaryCard({
   return (
     <View style={[styles.focusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.focusCardHeader}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>TappedIn</Text>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>TockedIn</Text>
         <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
       </View>
       <View style={styles.focusMetrics}>
@@ -381,55 +507,187 @@ function FocusInsightMetric({
   );
 }
 
-/** Mobile-friendly horizontal bars leave room for exact daily values. */
-function TappedInWeekChart({ days }: { days: FocusDay[] }) {
+/**
+ * The week as one line, with both series behind a toggle rather than in two
+ * separate cards. Focus time and screen time are read against each other far
+ * more often than either is read alone, and stacking two charts turned that
+ * comparison into a scroll rather than a glance.
+ *
+ * Seven bars read as seven separate facts; a line reads as a direction. The
+ * stroke is the accent, so it is the near-white neutral in dark mode and the
+ * near-black one in light.
+ */
+function WeekTrendChart({
+  focus,
+  screen,
+  onRequestScreenTime,
+}: {
+  focus: FocusDay[];
+  /** null when Usage access is missing, undefined while the read is in flight. */
+  screen: ScreenTimeDay[] | null | undefined;
+  /** Offered when the screen-time series is picked but has nothing to draw. */
+  onRequestScreenTime: () => void;
+}) {
   const { colors } = useTheme();
-  const max = Math.max(...days.map((day) => day.seconds), 1);
+  const [series, setSeries] = useState<Series>("focus");
+  // The card is fluid but the SVG needs a pixel width, so it is measured.
+  const [width, setWidth] = useState(0);
+
+  const screenDays = screen?.slice(-WEEK) ?? [];
+  const screenReady = screenDays.length > 0;
+  // Usage access can be revoked while the screen-time series is the one on
+  // show, so the card falls back rather than drawing an empty chart.
+  const active: Series = series === "screen" && screenReady ? "screen" : "focus";
+  const values: TrendPoint[] =
+    active === "screen"
+      ? screenDays.map((day) => ({ date: day.date, seconds: day.seconds }))
+      : focus.map((day) => ({ date: day.date, seconds: day.seconds }));
+
+  const max = Math.max(...values.map((point) => point.seconds), 1);
+  const total = values.reduce((sum, point) => sum + point.seconds, 0);
+  const sessions = focus.reduce((sum, day) => sum + day.sessions, 0);
+
+  const plot = FOCUS_CHART_HEIGHT - FOCUS_CHART_TOP - FOCUS_CHART_BOTTOM;
+  const baseline = FOCUS_CHART_TOP + plot;
+  // Points sit at the centre of each day's column so they line up with the
+  // labels underneath, which are laid out as equal flex children.
+  const points = values.map((point, index) => ({
+    point,
+    x: ((index + 0.5) / values.length) * width,
+    y: FOCUS_CHART_TOP + (1 - point.seconds / max) * plot,
+  }));
+
+  const line = points.map((entry) => `${entry.x},${entry.y}`).join(" ");
+  const area = points.length
+    ? `M ${points[0].x},${baseline} ` +
+      points.map((entry) => `L ${entry.x},${entry.y}`).join(" ") +
+      ` L ${points[points.length - 1].x},${baseline} Z`
+    : "";
 
   return (
     <View style={[styles.focusChart, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.focusChartHeader}>
         <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
-          Daily TappedIn
+          {active === "screen" ? "Daily screen time" : "Daily TockedIn"}
         </Text>
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>Focused · Sessions</Text>
+        <Text style={{ color: colors.textDim, fontSize: 12 }}>
+          {active === "screen"
+            ? `${duration(total)} · ${duration(Math.round(total / Math.max(1, values.length)))} a day`
+            : `${duration(total)} · ${sessions} ${sessions === 1 ? "session" : "sessions"}`}
+        </Text>
       </View>
 
-      <View style={styles.focusChartRows}>
-        {days.map((day) => {
-          const width = day.seconds === 0 ? 0 : Math.max(3, (day.seconds / max) * 100);
+      <View style={[styles.trendToggle, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+        {SERIES_OPTIONS.map((option) => {
+          const selected = active === option.value;
           return (
-            <View key={day.date} style={styles.focusChartRow}>
-              <View style={styles.focusDayLabel}>
-                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
-                  {dayName(day.date)}
-                </Text>
-                <Text style={{ color: colors.textDim, fontSize: 10 }}>
-                  {new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </Text>
-              </View>
-              <View style={[styles.focusBarTrack, { backgroundColor: colors.accentWash }]}>
-                <View
-                  style={[
-                    styles.focusBar,
-                    { backgroundColor: colors.accent, width: `${width}%` },
-                  ]}
-                />
-              </View>
-              <View style={styles.focusDayValues}>
-                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
-                  {duration(day.seconds)}
-                </Text>
-                <Text style={{ color: colors.textDim, fontSize: 10 }}>
-                  {day.sessions} {day.sessions === 1 ? "session" : "sessions"}
-                </Text>
-              </View>
-            </View>
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => {
+                // There is nothing to draw without Usage access, so send the
+                // user to the one place that can fix it rather than switching
+                // to an empty chart and leaving them to work out why.
+                if (option.value === "screen" && !screenReady) {
+                  onRequestScreenTime();
+                  return;
+                }
+                setSeries(option.value);
+              }}
+              style={({ pressed }) => [
+                styles.trendToggleButton,
+                {
+                  backgroundColor: selected ? colors.accentWash : "transparent",
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selected ? colors.accent : colors.textDim,
+                  fontSize: 12,
+                  fontWeight: "600",
+                }}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
           );
         })}
+      </View>
+
+      <View
+        style={{ height: FOCUS_CHART_HEIGHT }}
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      >
+        {width > 0 ? (
+          <>
+            <Svg width={width} height={FOCUS_CHART_HEIGHT}>
+              {/* The day axis. Every point is measured up from this line. */}
+              <Line
+                x1={0}
+                y1={baseline}
+                x2={width}
+                y2={baseline}
+                stroke={colors.border}
+                strokeWidth={1}
+              />
+              {/* A wash under the line rather than a second colour, so the fill
+                  reads as the line's own shadow and not as its own series. */}
+              <Path d={area} fill={colors.accent} fillOpacity={0.1} />
+              <Polyline
+                points={line}
+                fill="none"
+                stroke={colors.accent}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {points.map((entry) => (
+                <Circle
+                  key={entry.point.date}
+                  cx={entry.x}
+                  cy={entry.y}
+                  r={entry.point.seconds > 0 ? 3.5 : 2.5}
+                  fill={entry.point.seconds > 0 ? colors.accent : colors.border}
+                />
+              ))}
+            </Svg>
+
+            {/* Values are ordinary text rather than SVG text so they carry the
+                app's own font. Only days with time are labelled: a row of
+                zeroes would crowd out the days that actually happened. */}
+            {points.map((entry) =>
+              entry.point.seconds > 0 ? (
+                <Text
+                  key={entry.point.date}
+                  numberOfLines={1}
+                  style={[
+                    styles.focusPointValue,
+                    { left: entry.x - 22, top: entry.y - 20, color: colors.text },
+                  ]}
+                >
+                  {duration(entry.point.seconds)}
+                </Text>
+              ) : null
+            )}
+          </>
+        ) : null}
+      </View>
+
+      {/* Labelled from the series on show, so a short run of screen-time days
+          can never sit under a seven-day row of names. */}
+      <View style={styles.focusChartDays}>
+        {values.map((point) => (
+          <Text
+            key={point.date}
+            numberOfLines={1}
+            style={[styles.focusDayName, { color: colors.textDim }]}
+          >
+            {dayName(point.date)}
+          </Text>
+        ))}
       </View>
     </View>
   );
@@ -437,7 +695,7 @@ function TappedInWeekChart({ days }: { days: FocusDay[] }) {
 
 /**
  * The app's own launcher icon, straight from the package manager. Usage stats
- * can name packages the launcher does not list — TapIn itself, keyboards,
+ * can name packages the launcher does not list — TockIn itself, keyboards,
  * system UI — so anything without an icon falls back to a lettered tile rather
  * than leaving a hole in the row.
  */
@@ -465,91 +723,145 @@ function AppIcon({ name, uri }: { name: string; uri?: string }) {
 }
 
 /** The selected period's total screen time. */
-function TotalCard({ label, value }: { label: string; value: string }) {
+/**
+ * The selected period measured against the user's own usual day, which is the
+ * only baseline that means anything: a national average would say nothing
+ * about whether TockIn is working for this person.
+ *
+ * The wording carries the direction rather than a colour. The accent means "a
+ * session is running" everywhere else in TockIn, and borrowing it here to mean
+ * "a good day" would blunt that.
+ */
+function ScreenTimeCard({
+  periodLabel,
+  total,
+  saving,
+  label,
+  perDay,
+  effect,
+}: {
+  periodLabel: string;
+  /** The period's own screen time. Its bar repeats it, but the header is what
+      the eye lands on first and the bar only means something next to the other. */
+  total: number;
+  /** null when there is no screen-time history to compare against at all. */
+  saving: Saving | null;
+  /** Names the bar for the selected period. */
+  label: string;
+  /** The period is an average of several days, so the headline says "a day". */
+  perDay: boolean;
+  effect: TockInEffect | null;
+}) {
   const { colors } = useTheme();
+  const ready = saving !== null && saving.baselineDays >= MIN_BASELINE_DAYS;
+
+  const difference = saving ? saving.baseline - saving.current : 0;
+  const magnitude = Math.abs(difference);
+  // A minute either way is measurement noise, not a change worth naming.
+  const level = magnitude < 60;
+  const down = difference > 0;
+  const percent =
+    saving && saving.baseline > 0 ? Math.round((magnitude / saving.baseline) * 100) : 0;
+  const HeaderIcon = !ready ? CalendarDays : level ? Hourglass : down ? TrendingDown : TrendingUp;
+
   return (
-    <View style={[styles.totalCard, { backgroundColor: colors.accentWash }]}>
-      <View>
-        <Text style={{ color: colors.textDim, fontSize: 13 }}>{label} screen time</Text>
-        <Text style={[styles.total, { color: colors.text }]}>{value}</Text>
+    <View style={[styles.savingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {/* The total the separate screen-time card used to carry, kept small: the
+          headline underneath is the reading, and this is only its subject. */}
+      <View style={styles.screenHeader}>
+        <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+          <HeaderIcon size={20} color={colors.accent} strokeWidth={2.2} />
+        </View>
+        <Text numberOfLines={1} style={[styles.screenHeaderLabel, { color: colors.textDim }]}>
+          {periodLabel} screen time
+        </Text>
+        <Text style={[styles.screenHeaderTotal, { color: colors.text }]}>{duration(total)}</Text>
       </View>
-      <View style={[styles.totalIcon, { backgroundColor: colors.surface }]}>
-        <Hourglass size={23} color={colors.accent} strokeWidth={2.2} />
-      </View>
+
+      {/* Saying "3h saved" off one day of history would be a guess dressed as a
+          measurement. Naming the wait gives the user a reason to come back. */}
+      {!ready || !saving ? (
+        <>
+          <Text style={[styles.savingLearningTitle, { color: colors.text }]}>
+            Learning your usual day
+          </Text>
+          <Text style={[styles.savingSub, { color: colors.textDim }]}>
+            TockIn measures your screen time against your own average. That needs{" "}
+            {MIN_BASELINE_DAYS} full days, and it has {saving?.baselineDays ?? 0}{" "}
+            {saving?.baselineDays === 1 ? "day" : "days"} so far.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.savingHeadline, { color: colors.text }]}>
+            {level
+              ? "Level with your usual day"
+              : `${duration(magnitude)} ${down ? "less" : "more"}${perDay ? " a day" : ""}`}
+          </Text>
+          <Text style={[styles.savingSub, { color: colors.textDim }]}>
+            {level ? "Your usual day is the same." : `${percent}% ${down ? "below" : "above"} your usual day.`}
+            {saving.partial ? " Today is still going." : ""}
+          </Text>
+
+          {/* Both bars share one scale, so their lengths are the comparison. */}
+          <View style={styles.savingBars}>
+            <ComparisonBar
+              label="Your usual day"
+              seconds={saving.baseline}
+              max={Math.max(saving.baseline, saving.current, 1)}
+            />
+            <ComparisonBar
+              label={label}
+              seconds={saving.current}
+              max={Math.max(saving.baseline, saving.current, 1)}
+            />
+          </View>
+
+          {effect ? (
+            <View style={[styles.savingFooter, { borderColor: colors.border }]}>
+              <Nfc size={15} color={colors.textDim} strokeWidth={2.1} />
+              <Text style={[styles.savingFootnote, { color: colors.textDim }]}>
+                You average {duration(effect.tapped)} on the days you tap in, and{" "}
+                {duration(effect.rest)} on the days you do not.
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.savingBaselineNote, { color: colors.textDim }]}>
+              Your usual day is the average of the other {saving.baselineDays} days TockIn has
+              recorded.
+            </Text>
+          )}
+        </>
+      )}
     </View>
   );
 }
 
 /**
- * This week against the one before it. The wording carries the direction rather
- * than a colour: the accent green means "a session is running" everywhere else
- * in TapIn, and borrowing it here to mean "a good week" would blunt that.
+ * One side of the comparison. Horizontal, so the pair is read as one ratio.
+ *
+ * Both bars are filled with the accent, which is the near-white neutral in dark
+ * mode and the near-black one in light. Drawing the baseline in a fainter
+ * colour lost it against its own track in dark mode, and the two lengths are
+ * what carry the comparison anyway.
  */
-function TrendCard({ percent }: { percent: number }) {
+function ComparisonBar({ label, seconds, max }: { label: string; seconds: number; max: number }) {
   const { colors } = useTheme();
-  const down = percent <= 0;
-  const Icon = down ? TrendingDown : TrendingUp;
-  const magnitude = Math.abs(percent);
+  // A day with no recorded time still gets a sliver, otherwise the row looks
+  // like it failed to load rather than like a genuine zero.
+  const width = seconds === 0 ? 0 : Math.max(4, (seconds / max) * 100);
 
   return (
-    <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-        <Icon size={20} color={colors.accent} strokeWidth={2.2} />
+    <View style={styles.savingBarRow}>
+      <Text numberOfLines={1} style={[styles.savingBarLabel, { color: colors.textDim }]}>
+        {label}
+      </Text>
+      <View style={[styles.savingBarTrack, { backgroundColor: colors.accentWash }]}>
+        <View
+          style={[styles.savingBarFill, { width: `${width}%`, backgroundColor: colors.accent }]}
+        />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
-          {magnitude === 0
-            ? "Level with last week"
-            : `${magnitude}% ${down ? "less" : "more"} than last week`}
-        </Text>
-        <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
-          How these seven days compare with the seven before them.
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-/** Screen time for each of the last seven local-calendar days. */
-function WeekChart({ days }: { days: ScreenTimeDay[] }) {
-  const { colors } = useTheme();
-  const max = Math.max(...days.map((day) => day.seconds), 1);
-  const average = days.length
-    ? Math.round(days.reduce((sum, day) => sum + day.seconds, 0) / days.length)
-    : 0;
-
-  return (
-    <View style={[styles.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.chartTitle}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Daily screen time</Text>
-        <Text style={{ color: colors.textDim, fontSize: 13 }}>{duration(average)} avg</Text>
-      </View>
-      <View style={styles.bars}>
-        {days.map((day) => (
-          <View key={day.date} style={styles.barColumn}>
-            <View style={styles.barTrack}>
-              <Text style={[styles.barValue, { color: colors.textDim }]}>
-                {chartDuration(day.seconds)}
-              </Text>
-              <View style={styles.barArea}>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      backgroundColor: colors.accent,
-                      height:
-                        day.seconds === 0
-                          ? 3
-                          : Math.max(8, Math.round((day.seconds / max) * 88)),
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-            <Text style={{ color: colors.textDim, fontSize: 11 }}>{dayName(day.date)}</Text>
-          </View>
-        ))}
-      </View>
+      <Text style={[styles.savingBarValue, { color: colors.text }]}>{duration(seconds)}</Text>
     </View>
   );
 }
@@ -560,6 +872,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: space(3),
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1.5),
   },
   segment: {
     flexDirection: "row",
@@ -632,106 +949,61 @@ const styles = StyleSheet.create({
     gap: space(1),
     marginBottom: space(1.5),
   },
-  focusChartRows: {
-    gap: space(1.1),
+  // Narrower than the gap between two points, so neighbouring labels cannot
+  // touch even on the week where every day has time on it.
+  focusPointValue: {
+    position: "absolute",
+    width: 44,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
   },
-  focusChartRow: {
-    minHeight: 34,
+  focusChartDays: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: space(1),
+    marginTop: space(0.75),
   },
-  focusDayLabel: {
-    width: 38,
-  },
-  focusBarTrack: {
+  focusDayName: {
     flex: 1,
-    height: 8,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  focusBar: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  focusDayValues: {
-    width: 76,
-    alignItems: "flex-end",
+    textAlign: "center",
+    fontSize: 11,
   },
   messageCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     padding: space(2),
-  },
-  totalCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 16,
-    padding: space(2.25),
-    marginBottom: space(2),
-  },
-  total: {
-    fontSize: 34,
-    fontWeight: "600",
-    letterSpacing: -0.8,
-    marginTop: 3,
-    fontVariant: ["tabular-nums"],
-  },
-  totalIcon: {
-    width: 46,
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 23,
-  },
-  chartCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
-    padding: space(2),
     marginBottom: space(3),
   },
-  chartTitle: {
+  screenHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: space(2),
+    gap: space(1.25),
+    marginBottom: space(1.5),
   },
-  bars: {
-    height: 142,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: space(0.75),
-  },
-  barColumn: {
+  screenHeaderLabel: {
     flex: 1,
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
+    fontSize: 13,
   },
-  barTrack: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-  },
-  barValue: {
-    width: "100%",
-    height: 22,
-    fontSize: 9,
-    lineHeight: 10,
-    textAlign: "center",
+  screenHeaderTotal: {
+    fontSize: 15,
+    fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
-  barArea: {
-    flex: 1,
-    width: "60%",
-    justifyContent: "flex-end",
+  // Smaller than the period segment above it: that one chooses what the whole
+  // screen is about, this one only swaps the line inside its own card.
+  trendToggle: {
+    flexDirection: "row",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: space(1),
   },
-  bar: {
-    width: "100%",
-    borderRadius: 5,
-    opacity: 0.85,
+  trendToggleButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+    paddingVertical: space(0.85),
   },
   listHeader: {
     flexDirection: "row",
@@ -770,14 +1042,75 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  trendCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(1.5),
+  savingCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
-    padding: space(2),
+    padding: space(1.75),
     marginBottom: space(3),
+  },
+  savingHeadline: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    fontVariant: ["tabular-nums"],
+  },
+  savingLearningTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  savingSub: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  savingBars: {
+    marginTop: space(1.75),
+    gap: space(1),
+  },
+  savingBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1),
+  },
+  savingBarLabel: {
+    width: 84,
+    fontSize: 12,
+  },
+  savingBarTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  savingBarFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  savingBarValue: {
+    width: 54,
+    textAlign: "right",
+    fontSize: 13,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  savingFooter: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: space(1),
+    marginTop: space(1.75),
+    paddingTop: space(1.5),
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  savingFootnote: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  savingBaselineNote: {
+    marginTop: space(1.5),
+    fontSize: 11,
+    lineHeight: 16,
   },
   iconBox: {
     width: 40,

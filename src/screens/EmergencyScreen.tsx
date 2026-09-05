@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import CreditCard from "lucide-react-native/icons/credit-card";
 import LockKeyholeOpen from "lucide-react-native/icons/lock-keyhole-open";
+import SearchX from "lucide-react-native/icons/search-x";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { Body, GhostButton, HoldButton, PrimaryButton, Screen, Title } from "../components";
 import { Nav } from "../nav";
@@ -9,6 +11,9 @@ import {
   EMERGENCY_UNLOCKS_PER_MONTH,
   emergencyResetLabel,
   getEmergencyUnlocksLeft,
+  getRegisteredCards,
+  type RegisteredCard,
+  removeRegisteredCard,
 } from "../store";
 import { radius, space, useTheme } from "../theme";
 import { Text } from "../typography";
@@ -21,12 +26,12 @@ import { Text } from "../typography";
 export default function EmergencyScreen({
   nav,
   active,
-  sessionMode = "tapin",
+  sessionMode = "tockin",
   onUnlock,
 }: {
   nav: Nav;
   active: boolean;
-  sessionMode?: "tapin" | "studin";
+  sessionMode?: "tockin" | "studin";
   /** Ends the session and spends one unlock. Resolves with the number left. */
   onUnlock: () => Promise<number>;
 }) {
@@ -34,6 +39,11 @@ export default function EmergencyScreen({
   const [left, setLeft] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Asked once, straight after a successful unlock. An unlock has exactly two
+  // causes, and only one of them leaves a dead card in the list.
+  const [cards, setCards] = useState<RegisteredCard[]>([]);
+  const [askReason, setAskReason] = useState(false);
+  const [pickingLost, setPickingLost] = useState(false);
 
   useEffect(() => {
     getEmergencyUnlocksLeft().then(setLeft);
@@ -46,11 +56,52 @@ export default function EmergencyScreen({
       const remaining = await onUnlock();
       setLeft(remaining);
       setDone(true);
+      // Read after the unlock rather than on mount, so a card registered or
+      // removed while this screen was open cannot leave a stale list behind.
+      const registered = await getRegisteredCards();
+      setCards(registered);
+      // With nothing registered there is nothing the answer could change, so
+      // the question would only be one more tap between the user and their apps.
+      if (registered.length > 0) setAskReason(true);
     } catch (e: any) {
       Alert.alert("Couldn't unlock", e?.message ?? "Please try again.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const forgetCard = async (card: RegisteredCard) => {
+    try {
+      const next = await removeRegisteredCard(card.uid);
+      setCards(next);
+      setPickingLost(false);
+      setAskReason(false);
+      Alert.alert(
+        "Card removed",
+        next.length === 0
+          ? `${card.label} is gone and no card is registered. You will need to register one before your next session.`
+          : `${card.label} will no longer unlock TockIn.`,
+        next.length === 0
+          ? [
+              { text: "Later", style: "cancel" },
+              { text: "Register card", onPress: () => nav("cardSetup") },
+            ]
+          : [{ text: "OK" }]
+      );
+    } catch (e: any) {
+      Alert.alert("Couldn't remove card", e?.message ?? "Please try again.");
+    }
+  };
+
+  // One card is unambiguous. Several means the app cannot know which one went
+  // missing, and guessing would delete a card the user still has.
+  const reportLost = () => {
+    if (cards.length === 1) {
+      void forgetCard(cards[0]);
+      return;
+    }
+    setAskReason(false);
+    setPickingLost(true);
   };
 
   const exhausted = left !== null && left <= 0;
@@ -83,9 +134,11 @@ export default function EmergencyScreen({
         <View style={{ height: space(1) }} />
         <Body dim>
           {done
-            ? studIn
-              ? "Your StudIn session ended early and its blocked apps are available again."
-              : "Your session was ended without the card. Register a replacement card so the next one is a normal tap."
+            ? cards.length === 0
+              ? "Your apps are available again. No card is registered, so register one before your next session."
+              : studIn
+                ? "Your StudIn session ended early and its blocked apps are available again."
+                : "Your session was ended without the card and every blocked app is available again."
             : studIn
               ? "This will end your StudIn session before your Study timer is complete. Use this only when you need to leave early."
               : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
@@ -118,14 +171,16 @@ export default function EmergencyScreen({
 
         <View style={{ flex: 1, minHeight: space(3) }} />
 
+        {/* Registering only leads the way out when there is nothing left to tap.
+            A user who still has a working card came here for another reason. */}
         {done ? (
-          studIn ? (
-            <PrimaryButton label="Back to home" onPress={() => nav("home")} />
-          ) : (
+          cards.length === 0 ? (
             <>
               <PrimaryButton label="Register a new card" onPress={() => nav("cardSetup")} />
               <GhostButton label="Back to home" onPress={() => nav("home")} />
             </>
+          ) : (
+            <PrimaryButton label="Back to home" onPress={() => nav("home")} />
           )
         ) : (
           <>
@@ -152,6 +207,66 @@ export default function EmergencyScreen({
           </>
         )}
       </ScrollView>
+
+      {/* Not dismissible by the backdrop: both answers are one tap, and a stray
+          press outside would leave a lost card still registered. */}
+      <Modal visible={askReason} transparent animationType="fade" onRequestClose={() => setAskReason(false)}>
+        <View style={[styles.scrim, { backgroundColor: colors.scrim }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <SearchX size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Why did you need this?</Text>
+            <Text style={[styles.sheetBody, { color: colors.textDim }]}>
+              If the card is gone for good, TockIn should stop listing it as a way back in.
+            </Text>
+            <View style={styles.sheetActions}>
+              <PrimaryButton label="I lost my card" onPress={reportLost} />
+              <GhostButton label="Another reason" onPress={() => setAskReason(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={pickingLost}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickingLost(false)}
+      >
+        <View style={[styles.scrim, { backgroundColor: colors.scrim }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              <CreditCard size={20} color={colors.accent} strokeWidth={2.1} />
+            </View>
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Which card is lost?</Text>
+            <Text style={[styles.sheetBody, { color: colors.textDim }]}>
+              Only the one you pick is removed. The rest keep working.
+            </Text>
+            <View style={styles.sheetActions}>
+              {cards.map((card, index) => (
+                <Pressable
+                  key={card.uid}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${card.label}`}
+                  onPress={() => void forgetCard(card)}
+                  style={({ pressed }) => [
+                    styles.cardRow,
+                    index > 0 && { borderTopWidth: StyleSheet.hairlineWidth },
+                    { borderColor: colors.border, opacity: pressed ? 0.65 : 1 },
+                  ]}
+                >
+                  <CreditCard size={17} color={colors.textDim} strokeWidth={2.1} />
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500", flex: 1 }}>
+                    {card.label}
+                  </Text>
+                </Pressable>
+              ))}
+              <GhostButton label="Cancel" onPress={() => setPickingLost(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -171,5 +286,42 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  scrim: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: space(3),
+  },
+  sheet: {
+    width: "100%",
+    maxWidth: 340,
+    alignItems: "center",
+    gap: space(1),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
+    padding: space(2.5),
+  },
+  sheetTitle: {
+    marginTop: space(0.5),
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  sheetBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  // Stretched, because the sheet centres its children but the buttons and the
+  // card rows both want the full width.
+  sheetActions: {
+    alignSelf: "stretch",
+    marginTop: space(1),
+  },
+  cardRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1.25),
   },
 });

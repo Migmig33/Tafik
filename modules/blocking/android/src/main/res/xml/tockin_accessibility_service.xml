@@ -4,6 +4,6 @@
   android:accessibilityFeedbackType="feedbackGeneric"
   android:accessibilityFlags="flagDefault"
   android:canRetrieveWindowContent="false"
-  android:description="@string/tapin_accessibility_description"
+  android:description="@string/tockin_accessibility_description"
   android:isAccessibilityTool="false"
   android:notificationTimeout="0" />

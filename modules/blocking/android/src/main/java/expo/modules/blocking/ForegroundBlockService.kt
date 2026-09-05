@@ -45,7 +45,7 @@ private data class OverlayPalette(
   val onAccent: Int
 )
 
-/** Small code-drawn icon so the native overlay matches TapIn without legacy Android icons. */
+/** Small code-drawn icon so the native overlay matches TockIn without legacy Android icons. */
 private class LockBadgeView(
   context: Context,
   private val fillColor: Int,
@@ -134,7 +134,7 @@ class ForegroundBlockService : Service() {
         }
         overlay == null -> clearUnshieldCandidate()
         foreground == packageName -> {
-          // TapIn must become usable immediately so the user can scan to end
+          // TockIn must become usable immediately so the user can scan to end
           // the session. Other app transitions are confirmed below.
           clearUnshieldCandidate()
           hideShield()
@@ -247,7 +247,7 @@ class ForegroundBlockService : Service() {
       gravity = Gravity.CENTER_VERTICAL
     }
     header.addView(
-      makeText("TapIn", 26f, palette.text, semibold = true),
+      makeText("TockIn", 26f, palette.text, semibold = true),
       LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     )
     header.addView(makeText("●  FOCUS ACTIVE", 11f, palette.accent, semibold = true).apply {
@@ -355,7 +355,7 @@ class ForegroundBlockService : Service() {
       if (studInStudy) {
         "This app stays blocked until Study reaches 00:00."
       } else {
-        "Open TapIn, then tap your NFC card."
+        "Open TockIn, then tap your NFC card."
       },
       13f,
       palette.textDim
@@ -377,7 +377,7 @@ class ForegroundBlockService : Service() {
     val buttonFill = roundedBackground(palette.accent, 100)
     val rippleColor = (palette.onAccent and 0x00FFFFFF) or (40 shl 24)
     card.addView(makeText(
-      if (studInStudy) "Return to StudIn" else "Return to TapIn",
+      if (studInStudy) "Return to StudIn" else "Return to TockIn",
       16f,
       palette.onAccent,
       semibold = true
@@ -387,7 +387,7 @@ class ForegroundBlockService : Service() {
       isClickable = true
       isFocusable = true
       background = RippleDrawable(ColorStateList.valueOf(rippleColor), buttonFill, null)
-      setOnClickListener { returnToTapIn() }
+      setOnClickListener { returnToTockIn() }
     }, LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
       LinearLayout.LayoutParams.WRAP_CONTENT
@@ -520,7 +520,7 @@ class ForegroundBlockService : Service() {
     unshieldCandidateSince = 0L
   }
 
-  private fun returnToTapIn() {
+  private fun returnToTockIn() {
     hideShield()
     packageManager.getLaunchIntentForPackage(packageName)?.let {
       it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -532,7 +532,7 @@ class ForegroundBlockService : Service() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val channel = NotificationChannel(
       CHANNEL_ID,
-      "TapIn focus session",
+      "TockIn focus session",
       NotificationManager.IMPORTANCE_LOW
     ).apply {
       description = "Keeps app locking active during a focus session."
@@ -555,8 +555,8 @@ class ForegroundBlockService : Service() {
         detail = "Apps are available. The next Study starts automatically."
       }
       else -> {
-        title = "TapIn is locking selected apps"
-        detail = "Tap your card in TapIn to end the session."
+        title = "TockIn is locking selected apps"
+        detail = "Tap your card in TockIn to end the session."
       }
     }
 
@@ -590,7 +590,7 @@ class ForegroundBlockService : Service() {
     "${session.mode}:${session.phase}:${session.currentRound}:${session.totalRounds}"
 
   companion object {
-    private const val CHANNEL_ID = "tapped_in_focus"
+    private const val CHANNEL_ID = "tockin_focus"
     private const val NOTIFICATION_ID = 3107
     private const val POLL_INTERVAL_MS = 500L
     private const val EVENT_LOOKBACK_MS = 3000L

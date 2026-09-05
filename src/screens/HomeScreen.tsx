@@ -18,6 +18,7 @@ import {
   TapRipple,
   Title,
 } from "../components";
+import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import { Nav } from "../nav";
 import {
   DEFAULT_STUDIN_CONFIG,
@@ -54,7 +55,8 @@ export default function HomeScreen({
   blockCount,
   focusMode,
   scanning,
-  onTapIn,
+  onTockIn,
+  onStartWithoutCard,
 }: {
   nav: Nav;
   active: boolean;
@@ -67,9 +69,13 @@ export default function HomeScreen({
       because the button that starts it now lives in the tab bar. */
   scanning: null | "start" | "end";
   /** Arm the reader. The same action the tab bar's centre button runs. */
-  onTapIn: () => void;
+  onTockIn: () => void;
+  /** Start the session without reading a card, behind a confirmation. Offered
+      only while a start read is open, so it is never the first thing pressed. */
+  onStartWithoutCard: () => void;
 }) {
   const { colors } = useTheme();
+  const guide = useScreenGuide("home");
   const [now, setNow] = useState(Date.now());
   const [stats, setStats] = useState<TodayStats>({ seconds: 0, count: 0, streak: 0 });
   const [studIn, setStudIn] = useState<StudInConfig>(DEFAULT_STUDIN_CONFIG);
@@ -106,18 +112,21 @@ export default function HomeScreen({
       <Screen>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
           <View style={styles.homeHeader}>
-            <AnimatedSwapText value="TappedIn">
+            <AnimatedSwapText value="TockedIn">
               {(label) => <Title>{label}</Title>}
             </AnimatedSwapText>
-            <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-              <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
-              <AnimatedSwapText value={waiting ? "Ready to scan" : "Session active"}>
-                {(label) => (
-                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-                    {label}
-                  </Text>
-                )}
-              </AnimatedSwapText>
+            <View style={styles.headerActions}>
+              <GuideButton label="Home" onPress={guide.open} />
+              <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
+                <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
+                <AnimatedSwapText value={waiting ? "Ready to scan" : "Session active"}>
+                  {(label) => (
+                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                      {label}
+                    </Text>
+                  )}
+                </AnimatedSwapText>
+              </View>
             </View>
           </View>
 
@@ -146,6 +155,8 @@ export default function HomeScreen({
           {/* Ending and cancelling live in the centre tab-bar button. */}
           <GhostButton label="Card lost? Emergency unlock" onPress={() => nav("emergency")} />
         </ScrollView>
+
+        <GuideSheet guide="home" visible={guide.visible} onClose={guide.close} />
       </Screen>
     );
   }
@@ -156,20 +167,23 @@ export default function HomeScreen({
     <Screen>
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
         <View style={styles.homeHeader}>
-          <AnimatedSwapText value="TapIn">
+          <AnimatedSwapText value="TockIn">
             {(label) => <Title>{label}</Title>}
           </AnimatedSwapText>
-          <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-            <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
-            <AnimatedSwapText
-              value={`${stats.streak} ${stats.streak === 1 ? "day" : "days"}`}
-            >
-              {(label) => (
-                <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-                  {label}
-                </Text>
-              )}
-            </AnimatedSwapText>
+          <View style={styles.headerActions}>
+            <GuideButton label="Home" onPress={guide.open} />
+            <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
+              <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
+              <AnimatedSwapText
+                value={`${stats.streak} ${stats.streak === 1 ? "day" : "days"}`}
+              >
+                {(label) => (
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                    {label}
+                  </Text>
+                )}
+              </AnimatedSwapText>
+            </View>
           </View>
         </View>
 
@@ -180,9 +194,9 @@ export default function HomeScreen({
         <View style={styles.focusCluster}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="TapIn to begin"
+            accessibilityLabel="TockIn to begin"
             accessibilityState={{ disabled: waiting }}
-            onPress={onTapIn}
+            onPress={onTockIn}
             disabled={waiting}
             style={({ pressed }) => [styles.focusTarget, { opacity: pressed ? 0.68 : 1 }]}
           >
@@ -197,7 +211,7 @@ export default function HomeScreen({
                 fontWeight: "600",
               }}
             >
-              {waiting ? "Ready to scan" : "TapIn to begin"}
+              {waiting ? "Ready to scan" : "TockIn to begin"}
             </Text>
             <Body dim>
               {waiting
@@ -205,6 +219,14 @@ export default function HomeScreen({
                 : `${blockCount} apps will be locked.`}
             </Body>
           </Pressable>
+
+          {/* Outside the circle's pressable, so the tap that reaches it can
+              never also be the tap that armed the reader. */}
+          {waiting ? (
+            <View style={styles.withoutCard}>
+              <GhostButton label="Start without card" onPress={onStartWithoutCard} />
+            </View>
+          ) : null}
         </View>
 
         {/* StudIn takes this slot rather than sitting beside the day's totals:
@@ -253,7 +275,7 @@ export default function HomeScreen({
           </>
         ) : (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Today&apos;s TappedIn</Text>
+            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Today&apos;s TockedIn</Text>
             <View style={styles.metricsRow}>
               <FocusMetric icon={Timer} label="Focused" value={human(stats.seconds)} />
               <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
@@ -261,6 +283,8 @@ export default function HomeScreen({
           </>
         )}
       </ScrollView>
+
+      <GuideSheet guide="home" visible={guide.visible} onClose={guide.close} />
     </Screen>
   );
 }
@@ -350,6 +374,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: space(1.5),
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space(1),
+  },
   streakPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -366,6 +395,11 @@ const styles = StyleSheet.create({
   focusTarget: {
     alignItems: "center",
     gap: space(1),
+  },
+  // Held well clear of the circle: this is the path that locks the phone
+  // without a key in hand, so it should never be reachable by a near miss.
+  withoutCard: {
+    marginTop: space(3),
   },
   activeFocusContent: {
     alignItems: "center",

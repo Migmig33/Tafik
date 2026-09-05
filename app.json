@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "TapIn",
-    "slug": "tapin",
-    "scheme": "tapin",
+    "name": "TockIn",
+    "slug": "tockin",
+    "scheme": "tockin",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./src/assets/icon.png",
     "android": {
-      "package": "com.kupdevs.tapin",
+      "package": "com.kupdevs.tockin",
       "permissions": [
         "android.permission.NFC",
         "android.permission.PACKAGE_USAGE_STATS",
@@ -27,7 +27,7 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "TapIn uses your card to start and end a focus session."
+          "nfcPermission": "TockIn uses your card to start and end a focus session."
         }
       ],
       "expo-font",
@@ -45,7 +45,7 @@
     "owner": "tantansahur",
     "extra": {
       "eas": {
-        "projectId": "ff4cf819-aea4-447c-a228-f8f3af2ebce2"
+        "projectId": "39abf5ab-9feb-4698-90d2-eaef856cf11b"
       }
     }
   }

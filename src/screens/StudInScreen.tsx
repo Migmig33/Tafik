@@ -64,7 +64,7 @@ export default function StudInScreen({
     const study = session.phase === "study";
     const secondsLeft = (session.phaseEndsAt - now) / 1000;
     const PhaseIcon = study ? BookOpenCheck : Coffee;
-    // Deliberately the same shape as home's live TapIn session: same header,
+    // Deliberately the same shape as home's live TockIn session: same header,
     // same outlined circle at the same size, same timer beneath it. Only the
     // mark inside the circle and the counting direction differ.
     return (

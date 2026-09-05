@@ -6,7 +6,7 @@ export type AppScreenTime = { name: string; pkg: string; seconds: number };
 export type ScreenTimeDay = { date: string; seconds: number; apps: AppScreenTime[] };
 export type BlockingSessionState = {
   active: boolean;
-  mode: "none" | "tapin" | "studin";
+  mode: "none" | "tockin" | "studin";
   phase: "study" | "break" | null;
   currentRound: number;
   totalRounds: number;
@@ -47,7 +47,7 @@ const native = requireOptionalNativeModule<BlockingNativeModule>("Blocking");
 function requireBlockingModule(): BlockingNativeModule {
   if (!native) {
     throw new Error(
-      "TapIn's blocker isn't available on this device. Please update TapIn to the latest version."
+      "TockIn's blocker isn't available on this device. Please update TockIn to the latest version."
     );
   }
   return native;
@@ -67,7 +67,7 @@ export async function startStudInBlockingSession(
   if (blocklist.length === 0) throw new Error("Choose at least one app to block first.");
   const module = requireBlockingModule();
   if (typeof module.startStudInSession !== "function") {
-    throw new Error("StudIn needs a newer native build of TapIn.");
+    throw new Error("StudIn needs a newer native build of TockIn.");
   }
   await module.startStudInSession(
     blocklist,
@@ -107,13 +107,13 @@ export async function getBlockingSessionState(): Promise<BlockingSessionState> {
   if (!native) return INACTIVE_SESSION;
   if (typeof native.getSessionState !== "function") {
     const active = await native.isSessionActive();
-    return active ? { ...INACTIVE_SESSION, active: true, mode: "tapin" } : INACTIVE_SESSION;
+    return active ? { ...INACTIVE_SESSION, active: true, mode: "tockin" } : INACTIVE_SESSION;
   }
 
   const state = await native.getSessionState();
   return {
     active: Boolean(state.active),
-    mode: state.mode === "tapin" || state.mode === "studin" ? state.mode : "none",
+    mode: state.mode === "tockin" || state.mode === "studin" ? state.mode : "none",
     phase: state.phase === "study" || state.phase === "break" ? state.phase : null,
     currentRound: Math.max(0, Math.round(Number(state.currentRound) || 0)),
     totalRounds: Math.max(0, Math.round(Number(state.totalRounds) || 0)),
@@ -141,7 +141,7 @@ export async function syncBlockingAppearance(mode: "system" | "light" | "dark"):
 /**
  * Mirror the shield message into SharedPreferences, where the foreground
  * service can read it without the JS runtime being awake. An empty string means
- * "fall back to TapIn's own line".
+ * "fall back to TockIn's own line".
  *
  * Optional on the native side: a user running a build from before this shipped
  * simply keeps the default shield rather than crashing on a missing function.
@@ -169,7 +169,7 @@ export function hasAccessibilityServiceSupport(): boolean {
 export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getAppScreenTimeToday !== "function") {
-    throw new Error("Screen-time details aren't available yet. Please update TapIn to the latest version.");
+    throw new Error("Screen-time details aren't available yet. Please update TockIn to the latest version.");
   }
   const raw = await native.getAppScreenTimeToday();
   const apps = JSON.parse(raw) as unknown;
@@ -201,7 +201,7 @@ export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
 export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getScreenTimeInsights !== "function") {
-    throw new Error("Screen-time insights aren't available yet. Please update TapIn to the latest version.");
+    throw new Error("Screen-time insights aren't available yet. Please update TockIn to the latest version.");
   }
   const parsed = JSON.parse(await native.getScreenTimeInsights()) as {
     days?: { date?: unknown; milliseconds?: unknown; apps?: unknown }[];
@@ -235,7 +235,7 @@ export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
 export async function getInstalledApps(): Promise<InstalledApp[]> {
   const module = requireBlockingModule();
   if (typeof module.getInstalledAppsWithIcons !== "function") {
-    throw new Error("The app list isn't available yet. Please update TapIn to the latest version.");
+    throw new Error("The app list isn't available yet. Please update TockIn to the latest version.");
   }
   const parsed = JSON.parse(await module.getInstalledAppsWithIcons()) as unknown;
   if (!Array.isArray(parsed)) throw new Error("Couldn't read your installed apps. Please try again.");

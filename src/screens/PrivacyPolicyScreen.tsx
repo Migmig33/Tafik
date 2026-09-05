@@ -1,12 +1,8 @@
 import { useEffect } from "react";
 import { BackHandler, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
-import Database from "lucide-react-native/icons/database";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
-import Smartphone from "lucide-react-native/icons/smartphone";
-import type { LucideIcon } from "lucide-react-native";
 import { Screen, Title } from "../components";
-import { radius, space, useTheme } from "../theme";
+import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
 const EFFECTIVE_DATE = "September 4, 2026";
@@ -58,249 +54,239 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Text style={[styles.effective, { color: colors.textDim }]}>Effective {EFFECTIVE_DATE}</Text>
         <Text style={[styles.intro, { color: colors.text }]}>
-          TapIn is an Android focus app. This policy explains the information the app accesses,
+          TockIn is an Android focus app. This policy explains the information the app accesses,
           what stays on your device, why each Android permission is used, and the choices you have.
-          “TapIn,” “we,” and “us” mean the developer of the TapIn app (package
-          com.kupdevs.tapin).
+          “TockIn,” “we,” and “us” mean the developer of the TockIn app.
         </Text>
 
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: colors.accentWash, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.summaryIcon, { backgroundColor: colors.surface }]}>
-            <ShieldCheck size={22} color={colors.accent} strokeWidth={2.1} />
-          </View>
-          <View style={styles.summaryCopy}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>The short version</Text>
-            <Text style={[styles.paragraph, { color: colors.textDim }]}>
-              TapIn is a paid download with every available feature included; it has no in-app
-              purchases or subscriptions. TapIn has no user accounts or developer-operated backend.
-              It does not contain ads, analytics, or tracking SDKs, and it does not sell personal
-              information. App and device activity is processed locally for blocking and Insights.
-              Local app data may still be included in Android backup or device-transfer features if
-              you enable them.
-            </Text>
-          </View>
+        <Text style={[styles.note, { color: colors.text }]}>
+          Please read this Privacy Policy carefully.
+        </Text>
+
+        <View style={styles.summary}>
+          <Text style={[styles.summaryTitle, { color: colors.text }]}>The short version</Text>
+          <Text style={[styles.paragraph, { color: colors.textDim }]}>
+            You pay once and get every feature. There is nothing more to buy inside the app. TockIn
+            has no accounts and no servers of ours behind it. There are no ads, no analytics, and no
+            tracking, and we do not sell anything about you. Everything the app works out about your
+            apps and your screen time is worked out on your own phone. If you have Android backup or
+            device transfer switched on, that can still include TockIn’s data.
+          </Text>
         </View>
 
-        <PolicySection number="1" title="Scope and meaning of “collect”">
+        <PolicySection number="1" title="Scope and what we mean by “collect”">
           <Paragraph>
-            This policy applies to the TapIn Android app. TapIn must access some information on your
-            phone to provide its features. Unless stated otherwise, that access and processing happens
-            on the phone. The developer does not receive it. When we say TapIn does not “collect” data,
-            we mean it is not transmitted from the app to us or to a service acting for us.
+            This policy applies to the TockIn Android app. TockIn has to look at some information on
+            your phone in order to work at all. Unless this policy says otherwise, that looking and
+            that processing happen on the phone, and the developer never receives any of it. When we
+            say TockIn does not “collect” something, we mean it is never sent from the app to us or to
+            anyone acting for us.
           </Paragraph>
         </PolicySection>
 
-        <PolicySection number="2" title="Information TapIn accesses and uses">
-          <DataCard icon={Smartphone} title="App activity and screen time">
-            With Android Usage Access, TapIn can read which app is in the foreground, foreground-app
-            events, and how long apps were used. During a focus session, the foreground service checks
-            the current app so it can shield an app you selected. In StudIn, these checks enforce the
-            blocklist during Study intervals and stop blocking during Break intervals. When Accessibility
-            is enabled, TapIn also receives window-change events and the package name that owns each changed window. It
-            does not retrieve the window’s text, controls, taps, passwords, or content. Insights reads
-            up to 14 days of Android usage history to calculate daily totals, app-by-app time, charts,
-            and trends. Those Android usage records are read when needed and are not uploaded or copied
-            into TapIn’s session log.
-          </DataCard>
+        <PolicySection number="2" title="What TockIn looks at, and why">
+          <Bullet title="App activity and screen time">
+            With Android Usage Access, TockIn can see which app is open and how long your apps were
+            used. During a focus session, TockIn checks the app on screen so it can shield one you chose
+            to block. In StudIn, those checks apply during Study and stop during Break. With
+            Accessibility enabled, TockIn is also told when a new app window opens and which app it
+            belongs to. It is not able to read what is inside that window: no text, controls, taps,
+            passwords, or content. Insights reads up to 14 days of your Android usage history to work
+            out daily totals, time per app, charts, and trends. Android keeps those records; TockIn reads
+            them when you open Insights and never uploads or copies them.
+          </Bullet>
 
-          <DataCard icon={Database} title="Installed apps and your blocklist">
-            TapIn reads the names, Android package identifiers, and icons of launchable apps installed
-            on the device. This populates the Blocklist and gives readable names and icons in Insights
-            and on the blocking shield. Google Play treats an installed-app inventory as personal and
-            sensitive information. TapIn stores only the package identifiers you choose for the
-            blocklist; it does not upload, sell, or share your installed-app list.
-          </DataCard>
+          <Bullet title="Your apps and your blocklist">
+            TockIn reads the names and icons of the apps you can open from your home screen. That is
+            what fills the Blocklist, and what puts real names and icons in Insights and on the
+            blocking shield. The list of apps installed on a phone counts as personal and sensitive
+            information, so TockIn saves only the apps you actually pick for your blocklist. It never
+            uploads, sells, or shares the list of what you have installed.
+          </Bullet>
 
-          <DataCard icon={Database} title="NFC cards">
-            When you deliberately start a card scan, TapIn reads the card’s stable tag identifier
-            (UID). Registration reads the card twice to confirm that the UID is stable. TapIn stores the
-            UID and the label you give the card, then compares later taps with registered UIDs to start
-            or end a TapIn session or to start an entire StudIn cycle. A later NFC tap does not normally
-            end a StudIn Study interval. TapIn does not read other card contents and never writes to the card. A
-            card UID can be a persistent identifier, so protect access to your unlocked phone.
-          </DataCard>
+          <Bullet title="NFC cards">
+            When you start a card scan yourself, TockIn reads the card’s ID number. Registering a card
+            reads it twice to be sure the number does not change. TockIn saves that number and the name
+            you give the card, then checks later taps against your registered cards to start or end a
+            session, or to start a StudIn cycle. A tap does not normally end a Study interval. TockIn
+            reads nothing else on the card and never writes to it. The card’s number stays the same for
+            the life of the card, so keep your phone locked when you are not using it.
+          </Bullet>
 
-          <DataCard icon={Database} title="Settings and content you create">
-            TapIn stores your chosen appearance, onboarding and welcome status, registered-card labels
-            and UIDs, selected blocklist, custom shield message, StudIn Study and Break durations and
-            round count, active-session mode and timing state,
-            completed focus-session summaries, and emergency-unlock month and use count. A
-            completed-session summary contains the local calendar date and
-            duration—not the apps you opened during that session.
-          </DataCard>
+          <Bullet title="Settings and things you create">
+            TockIn saves your light or dark choice, whether you have finished setup, your card names
+            and numbers, your blocklist, your shield message, your StudIn Study and Break lengths and
+            round count, the state of a session that is still running, a summary of each finished
+            session, and how many emergency unlocks you have used this month. A finished session is
+            saved as a date and a length, never as the apps you opened during it.
+          </Bullet>
 
-          <DataCard icon={Database} title="StudIn schedule and focus time">
-            TapIn stores the Study duration, Break duration, round count, and timing needed to recover
-            an active StudIn cycle. Completed StudIn summaries count only Study time; Break time is excluded.
-          </DataCard>
+          <Bullet title="StudIn schedule and focus time">
+            TockIn saves your Study length, Break length, round count, and enough timing to pick a
+            running cycle back up if the app closes. Only Study time counts towards your focus totals.
+            Break time is left out.
+          </Bullet>
 
-          <DataCard icon={Smartphone} title="Permission and service status">
-            TapIn checks whether Usage Access, Accessibility, display-over-apps access, NFC, and
-            notification access are available so it can guide setup and run the features you request.
-            It does not create a history of permission changes. While a focus session is active, an
-            ongoing Android foreground-service notification keeps blocking reliable.
-          </DataCard>
+          <Bullet title="Permission and service status">
+            TockIn checks whether Usage Access, Accessibility, display over other apps, NFC, and
+            notifications are switched on, so it can guide you through setup and run what you asked
+            for. It keeps no history of those changes. While a session is running, TockIn shows an
+            ongoing notification, which is what lets blocking keep working in the background.
+          </Bullet>
         </PolicySection>
 
-        <PolicySection number="3" title="How Android permissions are used">
+        <PolicySection number="3" title="How each Android permission is used">
           <Bullet title="Usage Access">
-            Detects the foreground app during a session and calculates on-device screen-time Insights.
+            Spots the app on screen during a session, and works out your screen-time Insights on the
+            phone.
           </Bullet>
           <Bullet title="Accessibility">
-            Receives package-level window changes while blocking is active. If a changed window belongs
-            to an app on your blocklist, TapIn sends the device Home immediately. StudIn does this during
-            Study intervals, not Break intervals. TapIn does not retrieve the window-content tree.
+            Tells TockIn when a new app window opens while blocking is on, and which app it belongs to.
+            If that app is on your blocklist, TockIn sends you straight back to your home screen. In
+            StudIn this happens during Study, not during Break. TockIn cannot read what is inside the
+            window.
           </Bullet>
           <Bullet title="Display over other apps">
-            Places TapIn’s shield over a selected blocked app. The shield may show that app’s name and
-            icon and the custom message you saved.
+            Puts TockIn’s shield over an app you blocked. The shield may show that app’s name and icon
+            and the message you wrote.
           </Bullet>
           <Bullet title="NFC">
-            Reads a card UID only after you arm the scanner. TapIn does not keep the NFC reader open all
-            the time.
+            Reads a card number only after you start a scan yourself. TockIn does not leave the NFC
+            reader listening the rest of the time.
           </Bullet>
-          <Bullet title="Installed-app visibility">
-            Lets TapIn show launchable apps and match their package identifiers, labels, and icons for
-            Blocklist, Insights, and blocking.
+          <Bullet title="Seeing your apps">
+            Lets TockIn list the apps you can open, so it can show their names and icons in the
+            Blocklist and in Insights, and recognise them while blocking.
           </Bullet>
-          <Bullet title="Notifications and foreground service">
-            Shows the ongoing focus-session notification Android requires for reliable background
-            blocking.
+          <Bullet title="Notifications">
+            Shows the ongoing session notification. Android requires it for blocking to keep running in
+            the background.
           </Bullet>
           <Bullet title="Audio">
-            Plays TapIn’s bundled interface sound. TapIn does not request microphone access or record
-            audio.
+            Plays the sound built into TockIn. TockIn does not ask for the microphone and does not record
+            anything.
           </Bullet>
-          <Bullet title="Legacy storage declarations">
-            The app framework may declare read and write storage permissions for Android 12 and earlier.
-            TapIn does not request those permissions at runtime or use them to browse your photos, media,
-            documents, or other personal files.
+          <Bullet title="Storage">
+            On Android 12 and earlier, apps built this way list a storage permission by default. TockIn
+            never asks you for it and never uses it to look at your photos, media, documents, or files.
           </Bullet>
           <Paragraph>
-            The Android build includes the Internet permission as part of its application framework,
-            but the current TapIn features make no app-initiated network requests. TapIn does not ask for
-            location, camera, contacts, SMS, call logs, or microphone access.
+            TockIn lists the internet permission that apps built this way include by default, but the app
+            makes no internet requests of its own. TockIn does not ask for your location, camera,
+            contacts, messages, call history, or microphone.
           </Paragraph>
         </PolicySection>
 
-        <PolicySection number="4" title="Local storage and retention">
+        <PolicySection number="4" title="What is saved on your phone, and for how long">
           <Paragraph>
-            TapIn stores its data in app-private Android storage using AsyncStorage and SharedPreferences.
-            The blocklist, registered cards, preferences, shield message, StudIn schedule, and related state remain until
-            you change them, remove them, clear TapIn’s storage, or uninstall the app. Session history is
-            limited to the most recent 400 completed sessions; sessions shorter than five seconds are not
-            recorded. Emergency-unlock usage is interpreted by local calendar month and resets on the
-            first day of the next month.
+            Everything TockIn saves is kept in private storage on your phone that other apps cannot
+            read. Your blocklist, cards, preferences, shield message, and StudIn schedule stay there
+            until you change them, remove them, clear TockIn’s storage, or uninstall the app. TockIn
+            keeps only your 400 most recent finished sessions, and ignores anything shorter than five
+            seconds. Emergency unlocks are counted by calendar month and refill on the 1st.
           </Paragraph>
           <Paragraph>
-            Screen-time source records are maintained by Android under Android’s own retention rules;
-            TapIn reads a maximum 14-day window for Insights. If Android backup, restore, or device
-            transfer is enabled, Android or your device provider may back up and restore TapIn’s local
-            app data under your account settings and that provider’s privacy policy. TapIn does not
-            operate or receive those backups.
+            The screen-time records themselves belong to Android, which decides how long to keep them.
+            TockIn only ever reads the last 14 days of them. If you have Android backup or device
+            transfer switched on, Android or your phone maker may back up and restore TockIn’s data
+            under your own account settings and their privacy policy. TockIn does not run those backups
+            and never receives them.
           </Paragraph>
         </PolicySection>
 
         <PolicySection number="5" title="Sharing, selling, analytics, and ads">
           <Paragraph>
-            TapIn does not transmit your blocklist, installed-app list, usage activity, Insights, NFC
-            UIDs, session history, shield message, or settings to the developer. We do not sell, rent,
-            share, or use that information for advertising, analytics, cross-app tracking, profiling, or
-            marketing. The app does not include third-party advertising, analytics, or crash-reporting
-            SDKs.
+            TockIn does not send us your blocklist, your list of installed apps, your usage activity,
+            your Insights, your card numbers, your session history, your shield message, or your
+            settings. We do not sell, rent, share, or use any of it for advertising, analytics,
+            tracking across apps, profiling, or marketing. The app contains no third-party advertising,
+            analytics, or crash-reporting code.
           </Paragraph>
           <Paragraph>
-            Google Play, Android, your device manufacturer, and any backup provider may independently
-            process information when they distribute the app, provide operating-system services, handle
-            diagnostics you enabled, or perform backup and restore. Their processing is governed by
-            their own settings and privacy policies, and TapIn does not receive the on-device data listed
-            above from them.
+            Google Play, Android, your device maker, and any backup provider may handle information of
+            their own when they distribute the app, run the operating system, deal with diagnostics you
+            switched on, or back up and restore your phone. That is governed by their own settings and
+            privacy policies, and none of the on-device information above reaches us through them.
           </Paragraph>
           <Paragraph>
-            TapIn is sold as a paid Google Play download. Google Play processes the purchase outside
-            the TapIn app under Google&apos;s terms and privacy policy. Google may provide the developer
-            with purchase, licensing, and financial-reporting information needed to distribute the app
-            and administer transactions. TapIn has no in-app purchases or subscriptions, and the app
-            does not receive or store your payment-card details.
+            TockIn is sold as a paid Google Play download. Google Play handles the payment outside the
+            app, under Google&apos;s own terms and privacy policy. Google may give the developer the
+            purchase, licensing, and financial reporting information needed to sell the app and keep
+            the accounts straight. There is nothing to buy inside TockIn, and the app never sees or
+            stores your card details.
           </Paragraph>
         </PolicySection>
 
         <PolicySection number="6" title="Your choices and controls">
           <Bullet title="Permissions">
-            Grant or revoke Usage Access, Accessibility, display-over-apps access, NFC, and notifications
-            in Android Settings. A feature that needs revoked access will stop working.
+            Turn Usage Access, Accessibility, display over other apps, NFC, and notifications on or off
+            in Android Settings. Anything that needs a permission you removed will stop working.
           </Bullet>
           <Bullet title="Cards and blocklist">
-            Remove registered cards in TapIn’s card manager and add or remove apps from the Blocklist.
+            Remove registered cards in TockIn’s card manager, and add or remove apps in the Blocklist.
           </Bullet>
           <Bullet title="StudIn schedule">
-            Choose the Study duration, Break duration, and number of rounds before starting a StudIn cycle.
-            Emergency Exit is the only in-app way to end a Study interval early.
+            Choose your Study length, Break length, and number of rounds before you start a cycle.
+            Emergency unlock is the only way to end a Study interval early from inside the app.
           </Bullet>
           <Bullet title="Shield message">
-            Edit it in Settings or leave it empty to restore TapIn’s default message.
+            Edit it in Settings, or leave it empty to go back to TockIn’s own line.
           </Bullet>
-          <Bullet title="Delete local data">
-            Use Android Settings to clear TapIn’s storage, or uninstall TapIn. This removes the app’s
-            local copy, subject to any Android backup you control. Because we have no account or backend,
-            we cannot view, export, or delete the copy on your phone for you.
+          <Bullet title="Delete everything">
+            Use Android Settings to clear TockIn’s storage, or uninstall TockIn. That removes the app’s
+            copy, apart from any Android backup you control. Because there is no account and no server
+            of ours, we cannot view, export, or delete the copy on your phone for you.
           </Bullet>
         </PolicySection>
 
         <PolicySection number="7" title="Security">
           <Paragraph>
-            TapIn relies on Android’s app sandbox and app-private storage to limit access by other apps.
-            No storage method is guaranteed to be completely secure. Anyone who can unlock your device,
-            use device debugging or backup tools, or compromise the operating system may be able to
-            access local data. Keep Android updated, use a secure screen lock, and remove card UIDs or
-            shield text you no longer want stored.
+            TockIn relies on Android keeping apps separate from each other, and on private storage other
+            apps cannot open. No method of storing anything is completely secure. Someone who can
+            unlock your phone, use debugging or backup tools, or break the operating system itself may
+            be able to reach what is stored there. Keep Android updated, use a secure screen lock, and
+            remove any card or shield message you no longer want saved.
           </Paragraph>
         </PolicySection>
 
-        <PolicySection number="8" title="Automated operation and legal bases">
+        <PolicySection number="8" title="Automatic blocking, and the legal basis">
           <Paragraph>
-            Blocking is an on-device automated function: TapIn compares a foreground or changed-window
-            package with the blocklist you chose. When they match during a blocking interval, it returns
-            to Home immediately and uses the blocking shield as a fallback. StudIn uses the schedule you
-            selected to release restrictions when Study reaches zero, begin Break, and reapply restrictions
-            when the next Study begins. It does not make decisions with legal or similarly
-            significant effects and does not build an advertising profile. Where data-protection law
-            requires a legal basis, this device-local processing is performed at your request to provide
-            the app and based on the permissions and choices you control.
+            Blocking runs automatically on your phone: TockIn compares the app on screen with the
+            blocklist you chose, and when it matches during a blocking interval it sends you back to
+            your home screen, with the shield as a backup. StudIn follows the schedule you set, lifting
+            the block when Study reaches zero, starting Break, and putting it back when the next Study
+            begins. None of this makes decisions with legal consequences for you, and none of it builds
+            an advertising profile. Where the law asks for a legal basis, this all happens on your own
+            device, at your request, under permissions you control.
           </Paragraph>
         </PolicySection>
 
         <PolicySection number="9" title="Children’s privacy">
           <Paragraph>
-            TapIn is not directed to children under 13, and the developer does not knowingly collect
-            personal information from children. Since TapIn has no accounts or backend collection, we do
-            not receive a user’s age or the on-device information described in this policy.
+            TockIn is not aimed at children under 13, and the developer does not knowingly collect
+            personal information from children. Because TockIn has no accounts and sends us nothing, we
+            never receive a user’s age or any of the information described in this policy.
           </Paragraph>
         </PolicySection>
 
         <PolicySection number="10" title="Changes to this policy">
           <Paragraph>
-            We may update this policy when TapIn’s features, permissions, or legal obligations change.
-            The revised in-app policy will show a new effective date. If a future feature sends data off
-            the device, the policy and any required consent will be updated before that processing is
-            introduced.
+            We may update this policy when TockIn’s features, permissions, or legal obligations change.
+            The updated policy will carry a new effective date. If a future feature ever sends data off
+            your phone, this policy will be updated, and your consent asked for, before that starts.
           </Paragraph>
         </PolicySection>
 
         <PolicySection number="11" title="Contact">
           <Paragraph>
-            For privacy questions or requests, contact the TapIn developer using the developer contact
-            details shown on TapIn’s Google Play listing. Please do not send an NFC card UID or sensitive
-            shield-message text. The app has no server-side user record for us to look up.
+            For privacy questions or requests, write to kupdevs@gmail.com. Please do not include your
+            card number or a private shield message. There is no record on our side for us to look up.
           </Paragraph>
         </PolicySection>
 
-        <Text style={[styles.footer, { color: colors.textDim }]}>TapIn · com.kupdevs.tapin</Text>
+        <Text style={[styles.footer, { color: colors.textDim }]}>
+          TockIn · Last updated {EFFECTIVE_DATE}
+        </Text>
       </ScrollView>
     </Screen>
   );
@@ -326,27 +312,7 @@ function Paragraph({ children }: { children: React.ReactNode }) {
   return <Text style={[styles.paragraph, { color: colors.textDim }]}>{children}</Text>;
 }
 
-function DataCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  children: React.ReactNode;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={[styles.dataCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.dataHeading}>
-        <Icon size={18} color={colors.accent} strokeWidth={2.1} />
-        <Text style={[styles.dataTitle, { color: colors.text }]}>{title}</Text>
-      </View>
-      <Text style={[styles.paragraph, { color: colors.textDim }]}>{children}</Text>
-    </View>
-  );
-}
-
+/** Every list entry on the policy, from a one-line permission to a paragraph. */
 function Bullet({ title, children }: { title: string; children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
@@ -388,27 +354,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 23,
   },
-  summaryCard: {
+  // Sits between the intro and the summary, carrying a little more weight than
+  // either so it reads as an instruction rather than another sentence of prose.
+  note: {
+    marginTop: space(1.5),
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  summary: {
     marginTop: space(2.5),
-    padding: space(2),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: space(1.5),
-  },
-  summaryIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryCopy: {
-    flex: 1,
     gap: space(0.5),
   },
-  cardTitle: {
+  summaryTitle: {
     fontSize: 15,
     fontWeight: "600",
   },
@@ -444,22 +402,6 @@ const styles = StyleSheet.create({
   paragraph: {
     fontSize: 13,
     lineHeight: 21,
-  },
-  dataCard: {
-    padding: space(1.5),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.input,
-    gap: space(0.75),
-  },
-  dataHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(0.75),
-  },
-  dataTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
   },
   bulletRow: {
     flexDirection: "row",

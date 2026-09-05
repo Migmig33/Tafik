@@ -1,8 +1,8 @@
-# TapIn
+# TockIn
 
-TapIn uses an NFC card to start or end an open-ended focus session. StudIn uses
+TockIn uses an NFC card to start or end an open-ended focus session. StudIn uses
 one NFC scan to start a timed Study and Break cycle that ends automatically.
-Android-only. TapIn is sold as a paid download, with every available feature
+Android-only. TockIn is sold as a paid download, with every available feature
 included and no in-app purchases or subscriptions. It has no backend, accounts,
 analytics, or app-initiated network calls.
 
@@ -40,11 +40,11 @@ npx expo run:android   # builds a dev client and installs it on your device
 
 Then tap your card on the Card setup screen to register it, pick some apps on the
 Blocklist, grant the requested Android permissions, and start either an open-ended
-TapIn session or a timed StudIn cycle.
+TockIn session or a timed StudIn cycle.
 
 ## Before you ship
 
-- Confirm `com.kupdevs.tapin` is the permanent Android application ID before the first Play upload.
+- Confirm `com.kupdevs.tockin` is the permanent Android application ID before the first Play upload.
 - Complete the Play Console **Data Safety** form based on the release build; the current app keeps its
   feature data on-device and does not transmit it to the developer.
 - Publish the privacy policy at an active public URL and add that URL to the Play listing as well as the app.

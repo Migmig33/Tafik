@@ -74,7 +74,7 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
     return () => animation.stop();
   }, [finishedLines, index, line]);
 
-  // Let the final sentence fully clear before the story resolves into TapIn.
+  // Let the final sentence fully clear before the story resolves into TockIn.
   // The whoosh still begins at the exact moment BrandLockup appears.
   useEffect(() => {
     if (!finishedLines) return;
@@ -217,7 +217,7 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
                 }}
               >
                 <Text style={[styles.finalTagline, { color: colors.text }]}>
-                  Tap in. Stay Tapped In.
+                  Tap in. Stay locked in.
                 </Text>
               </Animated.View>
 

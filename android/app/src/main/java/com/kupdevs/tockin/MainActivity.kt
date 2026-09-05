@@ -1,4 +1,4 @@
-package com.kupdevs.tapin
+package com.kupdevs.tockin
 
 import android.os.Build
 import android.os.Bundle

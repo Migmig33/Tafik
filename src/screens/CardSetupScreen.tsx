@@ -103,7 +103,7 @@ export default function CardSetupScreen({
       return;
     }
     if (cards.some((card) => card.uid === result.uid)) {
-      setMessage("That card is already registered with TapIn.");
+      setMessage("That card is already registered with TockIn.");
       setStep("error");
       return;
     }
@@ -120,7 +120,7 @@ export default function CardSetupScreen({
       setLabel(nextLabel);
       setStep("done");
     } catch (error: any) {
-      setMessage(error?.message ?? "TapIn couldn't save that card.");
+      setMessage(error?.message ?? "TockIn couldn't save that card.");
       setStep("error");
     }
   };
@@ -159,7 +159,8 @@ export default function CardSetupScreen({
         <Title>Your cards</Title>
         <View style={{ height: space(0.75) }} />
         <Body dim>
-          Any registered card can start or end a focus session.
+          Any registered card can start or end a focus session. You can start one without
+          tapping a card, but only a card ends it.
         </Body>
 
         <ScrollView

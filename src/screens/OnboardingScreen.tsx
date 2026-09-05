@@ -50,7 +50,7 @@ const PERMS: {
   {
     key: "usage",
     name: "Usage access",
-    why: "So TapIn can tell which app is on screen.",
+    why: "So TockIn can tell which app is on screen.",
   },
   {
     key: "accessibility",
@@ -60,7 +60,7 @@ const PERMS: {
   {
     key: "overlay",
     name: "Display over other apps",
-    why: "So TapIn can cover blocked apps during a session.",
+    why: "So TockIn can cover blocked apps during a session.",
   },
   {
     key: "notifications",
@@ -70,7 +70,7 @@ const PERMS: {
   {
     key: "nfc",
     name: "NFC",
-    why: "To read your TapIn card when you tap it.",
+    why: "To read your TockIn card when you tap it.",
   },
 ];
 
@@ -135,7 +135,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
         if (!hasAccessibilityServiceSupport()) {
           Alert.alert(
             "Native rebuild required",
-            "This installed TapIn build does not contain the app-blocking Accessibility service yet. Install a newly built APK; Expo Start cannot add native Android services."
+            "This installed TockIn build does not contain the app-blocking Accessibility service yet. Install a newly built APK; Expo Start cannot add native Android services."
           );
           return;
         }
@@ -209,7 +209,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
 
         {!allGranted && (
           <>
-            <Body dim>Grant all of these to continue. TapIn cannot block reliably without them.</Body>
+            <Body dim>Grant all of these to continue. TockIn cannot block reliably without them.</Body>
             <View style={{ height: space(1.5) }} />
           </>
         )}

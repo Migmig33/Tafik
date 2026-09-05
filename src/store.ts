@@ -18,9 +18,10 @@ const KEYS = {
   sessions: "sessions", // array of completed session records
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
   studInConfig: "studInConfig", // study minutes, break minutes, and rounds
-  focusMode: "focusMode", // "tapin" or "studin"
+  focusMode: "focusMode", // "tockin" or "studin"
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
   shieldMessage: "shieldMessage", // the user's own words on the block overlay
+  guidesSeen: "guidesSeen", // screens whose first-visit walkthrough has been shown
 } as const;
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -135,15 +136,15 @@ export async function clearActiveSessionStartedAt(): Promise<void> {
 }
 
 /**
- * Which session a card tap starts. "tapin" is the standard open-ended session
+ * Which session a card tap starts. "tockin" is the standard open-ended session
  * that runs until a card ends it, and is what the app does when no extra mode
  * is switched on. "studin" is the timed study/break cycle. LockIn, the strict
  * variant, is announced in Settings but has no value here until it ships.
  */
-export type FocusMode = "tapin" | "studin";
+export type FocusMode = "tockin" | "studin";
 
 export async function getFocusMode(): Promise<FocusMode> {
-  return (await AsyncStorage.getItem(KEYS.focusMode)) === "studin" ? "studin" : "tapin";
+  return (await AsyncStorage.getItem(KEYS.focusMode)) === "studin" ? "studin" : "tockin";
 }
 
 export async function setFocusMode(mode: FocusMode): Promise<void> {
@@ -338,7 +339,7 @@ export async function setWelcomeSeen(seen: boolean): Promise<void> {
 }
 
 // --- Shield message --------------------------------------------------------
-// What the block overlay says when it catches you. TapIn's own line is fine,
+// What the block overlay says when it catches you. TockIn's own line is fine,
 // but "you said you'd call your mum tonight" is the one that actually works,
 // so the user can write it themselves.
 //
@@ -365,4 +366,38 @@ export async function setShieldMessage(message: string): Promise<string> {
   await AsyncStorage.setItem(KEYS.shieldMessage, trimmed);
   await syncShieldMessage(trimmed);
   return trimmed;
+}
+
+// --- Screen guides ---------------------------------------------------------
+// The first time a tab is opened it explains itself. Which ones have been seen
+// is stored as a list of keys rather than a single "toured" flag, so a screen
+// added in a later version can still introduce itself to somebody who has been
+// using the app for months.
+
+export async function getSeenGuides(): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(KEYS.guidesSeen);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((key): key is string => typeof key === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function hasSeenGuide(key: string): Promise<boolean> {
+  return (await getSeenGuides()).includes(key);
+}
+
+export async function markGuideSeen(key: string): Promise<void> {
+  const seen = await getSeenGuides();
+  if (seen.includes(key)) return;
+  await AsyncStorage.setItem(KEYS.guidesSeen, JSON.stringify([...seen, key]));
+}
+
+/** Forget every walkthrough so each tab introduces itself again on the next visit. */
+export async function resetGuides(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.guidesSeen);
 }

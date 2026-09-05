@@ -621,9 +621,9 @@ export function BrandLockup({
           ],
         }}
       >
-        <Text style={[styles.brandTitle, { color: colors.text }]}>TapIn</Text>
+        <Text style={[styles.brandTitle, { color: colors.text }]}>TockIn</Text>
         {showTagline ? (
-          <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap and lock in</Text>
+          <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap in to lock in</Text>
         ) : null}
       </Animated.View>
     </>

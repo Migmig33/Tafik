@@ -29,7 +29,7 @@ const ACTION_RISE = 26;
 export default function BottomNav({
   current,
   nav,
-  onTapIn,
+  onTockIn,
   onCancel,
   active,
   scanning,
@@ -38,7 +38,7 @@ export default function BottomNav({
   current: Tab;
   nav: Nav;
   /** The app's primary action: arm the reader for a card tap. */
-  onTapIn: () => void;
+  onTockIn: () => void;
   /** Drop the open read. The button is the only way to back out of a scan. */
   onCancel: () => void;
   /** A live focus session turns the centre action into the end-session X. */
@@ -110,7 +110,7 @@ export default function BottomNav({
                   ? "Start StudIn"
                   : "Tap in"
           }
-          onPress={scanning ? onCancel : onTapIn}
+          onPress={scanning ? onCancel : onTockIn}
           style={({ pressed }) => [
             styles.action,
             active || scanning

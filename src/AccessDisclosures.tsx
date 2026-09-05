@@ -34,13 +34,13 @@ export function AccessibilityDisclosure(controls: DisclosureControls) {
       icon={Accessibility}
       eyebrow="ACCESSIBILITY DISCLOSURE"
       title="App blocking needs Accessibility"
-      intro="TapIn uses Android Accessibility only to enforce the blocklist during focus sessions."
+      intro="TockIn uses Android Accessibility only to enforce the blocklist during focus sessions."
       items={[
-        "TapIn reads the package name of the app currently appearing on your screen.",
-        "TapIn uses that package name only during an active focus session, including StudIn Study intervals.",
-        "If it matches an app you selected to block, TapIn immediately returns your device to Home.",
-        "TapIn does not read text, passwords, taps, or any screen content.",
-        "This package-name information stays on your phone. TapIn does not upload or share it.",
+        "TockIn reads the package name of the app currently appearing on your screen.",
+        "TockIn uses that package name only during an active focus session, including StudIn Study intervals.",
+        "If it matches an app you selected to block, TockIn immediately returns your device to Home.",
+        "TockIn does not read text, passwords, taps, or any screen content.",
+        "This package-name information stays on your phone. TockIn does not upload or share it.",
       ]}
       note="You can choose Not now. Immediate blocked-app redirection will remain unavailable until you enable Accessibility."
     />
@@ -54,12 +54,12 @@ export function UsageAccessDisclosure(controls: DisclosureControls) {
       icon={ChartNoAxesCombined}
       eyebrow="USAGE ACCESS DISCLOSURE"
       title="Blocking and Insights need Usage Access"
-      intro="TapIn uses Android Usage Access for app blocking and on-device screen-time Insights."
+      intro="TockIn uses Android Usage Access for app blocking and on-device screen-time Insights."
       items={[
-        "TapIn reads foreground-app activity, including which app was used and for how long.",
-        "During focus sessions, TapIn uses this activity to detect selected blocked apps and show the blocking shield.",
+        "TockIn reads foreground-app activity, including which app was used and for how long.",
+        "During focus sessions, TockIn uses this activity to detect selected blocked apps and show the blocking shield.",
         "Insights processes recent activity on your device to calculate screen-time totals, app usage, charts, and trends.",
-        "Your foreground-app activity and screen-time information stay on your phone. TapIn does not upload or share them.",
+        "Your foreground-app activity and screen-time information stay on your phone. TockIn does not upload or share them.",
       ]}
       note="You can choose Not now. App detection and device screen-time Insights will remain unavailable until you enable Usage Access."
     />
