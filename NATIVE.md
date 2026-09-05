@@ -23,7 +23,7 @@ records its architecture and constraints for future maintenance.
    time, durations, and round count; the native watchdog releases restrictions
    during Break and reapplies them at the next Study without waking JS.
 5. **Read blocking state without JS awake.** Mirror the blocklist, appearance,
-   shield message, and StudIn schedule into `SharedPreferences` so the service can
+   and StudIn schedule into `SharedPreferences` so the service can
    enforce and complete a live session after the React Native runtime sleeps. NFC
    reads happen in the app UI. One scan starts StudIn; it does not normally end it.
 
@@ -53,5 +53,5 @@ getScreenTimeToday(): Promise<number>                          // foreground app
 getAppScreenTimeToday(): Promise<string>                        // per-app foreground time JSON
 getScreenTimeInsights(): Promise<string>                        // fourteen daily totals + apps JSON
 setAppearanceMode(mode: "system" | "light" | "dark"): Promise<void>
-setShieldMessage(message: string): Promise<void>
+wasInstalledFromStore(): Promise<boolean>            // false means Android restricts the Accessibility toggle
 ```
