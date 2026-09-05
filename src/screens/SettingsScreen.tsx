@@ -34,6 +34,7 @@ import {
   hasAccessibilityAccess,
   hasOverlayPermission,
   hasUsageAccess,
+  needsRestrictedSettingHelp,
 } from "../blocking";
 import { Body, InfoSheet, Screen, Title } from "../components";
 import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
@@ -136,6 +137,7 @@ export default function SettingsScreen({
   const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
   const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
   const [developerOpen, setDeveloperOpen] = useState(false);
+  const [restrictedSettingHelp, setRestrictedSettingHelp] = useState(false);
 
   useEffect(() => {
     getShieldMessage().then(setShieldDraft);
@@ -172,6 +174,12 @@ export default function SettingsScreen({
     });
     return () => subscription.remove();
   }, [refresh]);
+
+  // Who installed the app cannot change while it is running, so unlike the
+  // permissions above this is read once instead of on every resume.
+  useEffect(() => {
+    needsRestrictedSettingHelp().then(setRestrictedSettingHelp);
+  }, []);
 
   const resetsIn = emergencyDaysUntilReset();
   const appearance: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
@@ -580,6 +588,7 @@ export default function SettingsScreen({
 
       <AccessibilityDisclosure
         visible={accessibilityDisclosureOpen}
+        restrictedSettingHelp={restrictedSettingHelp}
         onDecline={() => setAccessibilityDisclosureOpen(false)}
         onAgree={() => {
           setAccessibilityDisclosureOpen(false);

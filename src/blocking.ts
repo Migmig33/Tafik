@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from "expo";
+import { Platform } from "react-native";
 
 export type InstalledApp = { name: string; pkg: string; icon: string };
 type InstalledAppSummary = Omit<InstalledApp, "icon">;
@@ -35,6 +36,7 @@ type BlockingNativeModule = {
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
+  wasInstalledFromStore?(): Promise<boolean>;
   getScreenTimeToday(): Promise<number>;
   getAppScreenTimeToday(): Promise<string>;
   getScreenTimeInsights(): Promise<string>;
@@ -160,6 +162,15 @@ export async function hasOverlayPermission(): Promise<boolean> {
 
 export async function hasAccessibilityAccess(): Promise<boolean> {
   return native?.hasAccessibilityAccess ? native.hasAccessibilityAccess() : false;
+}
+
+// Only sideloaded installs on Android 13 and up run into the restricted
+// setting, so everyone else is spared an explanation of a dialog they will
+// never see.
+export async function needsRestrictedSettingHelp(): Promise<boolean> {
+  if (Platform.OS !== "android" || Number(Platform.Version) < 33) return false;
+  if (typeof native?.wasInstalledFromStore !== "function") return false;
+  return !(await native.wasInstalledFromStore());
 }
 
 export function hasAccessibilityServiceSupport(): boolean {

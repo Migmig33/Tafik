@@ -16,6 +16,7 @@ import {
   hasAccessibilityServiceSupport,
   hasOverlayPermission,
   hasUsageAccess,
+  needsRestrictedSettingHelp,
 } from "../blocking";
 import { Body, PrimaryButton, Screen, Title } from "../components";
 import { Nav } from "../nav";
@@ -78,6 +79,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
   const { colors } = useTheme();
   const [usageDisclosureOpen, setUsageDisclosureOpen] = useState(false);
   const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
+  const [restrictedSettingHelp, setRestrictedSettingHelp] = useState(false);
   const [granted, setGranted] = useState<Record<PermKey, boolean>>({
     usage: false,
     accessibility: false,
@@ -114,6 +116,12 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
     });
     return () => subscription.remove();
   }, [refresh]);
+
+  // Who installed the app cannot change while it is running, so unlike the
+  // permissions above this is read once instead of on every resume.
+  useEffect(() => {
+    needsRestrictedSettingHelp().then(setRestrictedSettingHelp);
+  }, []);
 
   const grant = async (key: PermKey) => {
     try {
@@ -226,6 +234,7 @@ export default function OnboardingScreen({ nav }: { nav: Nav }) {
 
       <AccessibilityDisclosure
         visible={accessibilityDisclosureOpen}
+        restrictedSettingHelp={restrictedSettingHelp}
         onDecline={() => setAccessibilityDisclosureOpen(false)}
         onAgree={() => {
           setAccessibilityDisclosureOpen(false);
