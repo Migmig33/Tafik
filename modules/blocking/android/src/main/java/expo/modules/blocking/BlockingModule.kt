@@ -49,6 +49,12 @@ class BlockingModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Blocking")
 
+    // Null early in startup on some launches, and a leftover key is not worth
+    // crashing over, so this is skipped rather than forced when it is.
+    OnCreate {
+      appContext.reactContext?.let { BlockingPreferences.dropRetiredKeys(it) }
+    }
+
     AsyncFunction("startSession") { blocklist: List<String> ->
       val context = requireNotNull(appContext.reactContext)
       requireBlockingPermissions(context)

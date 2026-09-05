@@ -24,6 +24,15 @@ const KEYS = {
   welcomeAnswers: "welcomeAnswers", // the two first-run questions
 } as const;
 
+// Keys earlier builds wrote that nothing reads any more. A phone that used one
+// of those builds would otherwise keep the data of a removed feature for as
+// long as the app stays installed.
+const RETIRED_KEYS = ["shieldMessage"];
+
+export async function purgeRetiredKeys(): Promise<void> {
+  await AsyncStorage.multiRemove(RETIRED_KEYS);
+}
+
 export async function getOnboardingDone(): Promise<boolean> {
   return (await AsyncStorage.getItem(KEYS.onboardingDone)) === "1";
 }

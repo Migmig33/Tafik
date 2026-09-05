@@ -45,6 +45,7 @@ import {
   getFocusMode,
   getStudInConfig,
   getWelcomeSeen,
+  purgeRetiredKeys,
   recordSession,
   setActiveSessionStartedAt,
   setWelcomeSeen,
@@ -133,6 +134,12 @@ function AppContent() {
       setScreen(done && (accessibilityReady || sessionActive) ? sessionScreen : "onboarding");
       setReady(true);
     })();
+  }, []);
+
+  // Cleared on launch rather than on the way out of the removed feature: the
+  // build that dropped it is the first one that can reach these phones at all.
+  useEffect(() => {
+    void purgeRetiredKeys().catch(() => {});
   }, []);
 
   // Refresh block count whenever we land back on home.

@@ -43,6 +43,16 @@ internal object BlockingPreferences {
   private fun prefs(context: Context) =
     context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+  // Written by earlier builds and unreachable now. The shield draws a fixed
+  // line, so nothing will ever read the message a user once saved here.
+  private val RETIRED_KEYS = listOf("shieldMessage")
+
+  fun dropRetiredKeys(context: Context) {
+    val editor = prefs(context).edit()
+    RETIRED_KEYS.forEach(editor::remove)
+    editor.apply()
+  }
+
   @Synchronized
   fun start(context: Context, packages: List<String>) {
     prefs(context).edit()
