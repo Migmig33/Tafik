@@ -32,7 +32,6 @@ type BlockingNativeModule = {
   getSessionState?(): Promise<BlockingSessionState>;
   consumeStudInResult?(): Promise<StudInResult>;
   setAppearanceMode?(mode: "system" | "light" | "dark"): Promise<void>;
-  setShieldMessage?(message: string): Promise<void>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
@@ -138,18 +137,6 @@ export async function consumeStudInResult(): Promise<StudInResult> {
 
 export async function syncBlockingAppearance(mode: "system" | "light" | "dark"): Promise<void> {
   await native?.setAppearanceMode?.(mode);
-}
-
-/**
- * Mirror the shield message into SharedPreferences, where the foreground
- * service can read it without the JS runtime being awake. An empty string means
- * "fall back to TockIn's own line".
- *
- * Optional on the native side: a user running a build from before this shipped
- * simply keeps the default shield rather than crashing on a missing function.
- */
-export async function syncShieldMessage(message: string): Promise<void> {
-  await native?.setShieldMessage?.(message);
 }
 
 export async function hasUsageAccess(): Promise<boolean> {

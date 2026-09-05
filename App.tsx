@@ -16,7 +16,6 @@ import {
   hasStudInSessionSupport,
   startBlockingSession,
   startStudInBlockingSession,
-  syncShieldMessage,
 } from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
@@ -42,7 +41,6 @@ import {
   getBlocklist,
   getOnboardingDone,
   getRegisteredCards,
-  getShieldMessage,
   type FocusMode,
   getFocusMode,
   getStudInConfig,
@@ -135,13 +133,6 @@ function AppContent() {
       setScreen(done && (accessibilityReady || sessionActive) ? sessionScreen : "onboarding");
       setReady(true);
     })();
-  }, []);
-
-  // Keep the service's native copy in step with the locally stored message.
-  useEffect(() => {
-    void getShieldMessage()
-      .then(syncShieldMessage)
-      .catch(() => {});
   }, []);
 
   // Refresh block count whenever we land back on home.

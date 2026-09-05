@@ -130,10 +130,6 @@ class BlockingModule : Module() {
       BlockingPreferences.setAppearanceMode(requireNotNull(appContext.reactContext), mode)
     }
 
-    AsyncFunction("setShieldMessage") { message: String ->
-      BlockingPreferences.setShieldMessage(requireNotNull(appContext.reactContext), message)
-    }
-
     AsyncFunction("hasUsageAccess") {
       hasUsageAccess(requireNotNull(appContext.reactContext))
     }

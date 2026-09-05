@@ -9,7 +9,6 @@ import Hourglass from "lucide-react-native/icons/hourglass";
 import House from "lucide-react-native/icons/house";
 import Layers from "lucide-react-native/icons/layers";
 import ListChecks from "lucide-react-native/icons/list-checks";
-import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
 import Nfc from "lucide-react-native/icons/nfc";
 import Palette from "lucide-react-native/icons/palette";
 import ScanLine from "lucide-react-native/icons/scan-line";
@@ -150,12 +149,6 @@ export const GUIDES: Record<GuideKey, Guide> = {
         title: "Appearance and mode",
         body:
           "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
-      },
-      {
-        icon: MessageSquareQuote,
-        title: "Shield message",
-        body:
-          "One short line of your own, shown over a blocked app when you open it. Your reason works better than ours.",
       },
       {
         icon: ScanLine,

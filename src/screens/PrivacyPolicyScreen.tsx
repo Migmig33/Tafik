@@ -5,7 +5,7 @@ import { Screen, Title } from "../components";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
-const EFFECTIVE_DATE = "September 4, 2026";
+const EFFECTIVE_DATE = "September 6, 2026";
 
 type PolicySectionProps = {
   number: string;
@@ -115,7 +115,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
 
           <Bullet title="Settings and things you create">
             TockIn saves your light or dark choice, whether you have finished setup, your card names
-            and numbers, your blocklist, your shield message, your StudIn Study and Break lengths and
+            and numbers, your blocklist, your StudIn Study and Break lengths and
             round count, the state of a session that is still running, a summary of each finished
             session, and how many emergency unlocks you have used this month. A finished session is
             saved as a date and a length, never as the apps you opened during it.
@@ -180,7 +180,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
         <PolicySection number="4" title="What is saved on your phone, and for how long">
           <Paragraph>
             Everything TockIn saves is kept in private storage on your phone that other apps cannot
-            read. Your blocklist, cards, preferences, shield message, and StudIn schedule stay there
+            read. Your blocklist, cards, preferences, and StudIn schedule stay there
             until you change them, remove them, clear TockIn’s storage, or uninstall the app. TockIn
             keeps only your 400 most recent finished sessions, and ignores anything shorter than five
             seconds. Emergency unlocks are counted by calendar month and refill on the 1st.
@@ -197,7 +197,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
         <PolicySection number="5" title="Sharing, selling, analytics, and ads">
           <Paragraph>
             TockIn does not send us your blocklist, your list of installed apps, your usage activity,
-            your Insights, your card numbers, your session history, your shield message, or your
+            your Insights, your card numbers, your session history, or your
             settings. We do not sell, rent, share, or use any of it for advertising, analytics,
             tracking across apps, profiling, or marketing. The app contains no third-party advertising,
             analytics, or crash-reporting code.
@@ -229,9 +229,6 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             Choose your Study length, Break length, and number of rounds before you start a cycle.
             Emergency unlock is the only way to end a Study interval early from inside the app.
           </Bullet>
-          <Bullet title="Shield message">
-            Edit it in Settings, or leave it empty to go back to TockIn’s own line.
-          </Bullet>
           <Bullet title="Delete everything">
             Use Android Settings to clear TockIn’s storage, or uninstall TockIn. That removes the app’s
             copy, apart from any Android backup you control. Because there is no account and no server
@@ -245,7 +242,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             apps cannot open. No method of storing anything is completely secure. Someone who can
             unlock your phone, use debugging or backup tools, or break the operating system itself may
             be able to reach what is stored there. Keep Android updated, use a secure screen lock, and
-            remove any card or shield message you no longer want saved.
+            remove any card you no longer want saved.
           </Paragraph>
         </PolicySection>
 
@@ -280,7 +277,7 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
         <PolicySection number="11" title="Contact">
           <Paragraph>
             For privacy questions or requests, write to kupdevs@gmail.com. Please do not include your
-            card number or a private shield message. There is no record on our side for us to look up.
+            card number. There is no record on our side for us to look up.
           </Paragraph>
         </PolicySection>
 

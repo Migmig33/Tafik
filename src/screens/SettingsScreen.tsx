@@ -18,7 +18,6 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
 import Layers from "lucide-react-native/icons/layers";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
-import MessageSquareQuote from "lucide-react-native/icons/message-square-quote";
 import Mail from "lucide-react-native/icons/mail";
 import Monitor from "lucide-react-native/icons/monitor";
 import Moon from "lucide-react-native/icons/moon";
@@ -46,14 +45,11 @@ import {
   type FocusMode,
   getEmergencyUnlocksLeft,
   getFocusMode,
-  getShieldMessage,
   resetGuides,
   setFocusMode,
-  setShieldMessage,
-  SHIELD_MESSAGE_MAX_LENGTH,
 } from "../store";
 import { radius, space, ThemeMode, useTheme } from "../theme";
-import { Text, TextInput } from "../typography";
+import { Text } from "../typography";
 
 // Empty until TockIn is published. Filling this in is all that is needed to
 // make the rate row open its store listing.
@@ -99,10 +95,6 @@ const aboutLinks: AboutLink[] = [
   },
 ];
 
-/** What the shield says when the user has not written their own line. */
-const DEFAULT_SHIELD_MESSAGE =
-  "This app will close.";
-
 type AccessState = { usage: boolean; accessibility: boolean; overlay: boolean };
 
 export default function SettingsScreen({
@@ -127,7 +119,6 @@ export default function SettingsScreen({
     overlay: false,
   });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
-  const [shieldDraft, setShieldDraft] = useState("");
   const [focusMode, setFocusModeState] = useState<FocusMode>("tockin");
   // The row only has room for a summary, so the rest of the explanation lives
   // in a sheet the row opens.
@@ -140,7 +131,6 @@ export default function SettingsScreen({
   const [restrictedSettingHelp, setRestrictedSettingHelp] = useState(false);
 
   useEffect(() => {
-    getShieldMessage().then(setShieldDraft);
     getFocusMode().then(setFocusModeState);
   }, []);
 
@@ -148,12 +138,6 @@ export default function SettingsScreen({
     setFocusModeState(next);
     onModeChange?.(next);
     void setFocusMode(next);
-  };
-
-  // Saved on the way out of the field rather than on every keystroke: each save
-  // crosses the native bridge, and the shield only needs the finished sentence.
-  const commitShieldMessage = () => {
-    setShieldMessage(shieldDraft).then(setShieldDraft);
   };
 
   const refresh = useCallback(async () => {
@@ -320,44 +304,6 @@ export default function SettingsScreen({
             ? "Your card starts a timed study cycle. Set the schedule on home, and end a cycle early by tapping your card during a break."
             : "Your card starts an open session that stays locked until you tap the card again."}
         </Text>
-
-        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SHIELD MESSAGE</Text>
-        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.shieldBody}>
-            <View style={styles.shieldHeader}>
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <MessageSquareQuote size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>
-                  Your words on the shield
-                </Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Shown when a locked app is opened. Leave it empty for TockIn&apos;s own line.
-                </Text>
-              </View>
-            </View>
-
-            <TextInput
-              value={shieldDraft}
-              onChangeText={setShieldDraft}
-              onBlur={commitShieldMessage}
-              onSubmitEditing={commitShieldMessage}
-              returnKeyType="done"
-              multiline
-              maxLength={SHIELD_MESSAGE_MAX_LENGTH}
-              placeholder={DEFAULT_SHIELD_MESSAGE}
-              placeholderTextColor={colors.textDim}
-              style={[
-                styles.shieldInput,
-                { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border },
-              ]}
-            />
-            <Text style={{ color: colors.textDim, fontSize: 12, textAlign: "right" }}>
-              {shieldDraft.length} / {SHIELD_MESSAGE_MAX_LENGTH}
-            </Text>
-          </View>
-        </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SYSTEM ACCESS</Text>
         <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -788,24 +734,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: space(1),
-  },
-  shieldBody: {
-    gap: space(1.25),
-    padding: space(1.5),
-  },
-  shieldHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(1.25),
-  },
-  shieldInput: {
-    minHeight: 76,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlignVertical: "top",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.input,
-    paddingHorizontal: space(1.5),
-    paddingVertical: space(1.25),
   },
 });
