@@ -6,4 +6,5 @@
   android:canRetrieveWindowContent="false"
   android:description="@string/tockin_accessibility_description"
   android:isAccessibilityTool="false"
+  android:summary="@string/tockin_accessibility_summary"
   android:notificationTimeout="0" />
