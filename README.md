@@ -18,7 +18,6 @@ The full JS shell, on your own phone:
 - Native Android blocker — immediately exits selected apps, with a full-screen shield fallback
 - Phone-wide daily screen-time monitoring through Android Usage Access
 - Screen-time Insights with a seven-day chart, per-app breakdown, and weekly trend
-- A custom message on the native blocking shield
 - StudIn with configurable Study, Break, and round counts started by one NFC scan
 - Native automatic StudIn transitions with blocking released only during Breaks
 - Light + dark mode, monochrome at rest, accent green only during a session
