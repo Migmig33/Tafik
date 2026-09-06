@@ -39,9 +39,21 @@ private data class LaunchableAppEntry(
 // trend needs the seven before them to have something to compare against.
 private const val INSIGHT_DAYS = 14
 
+// Android 13 and up hides the Accessibility toggle behind "restricted settings"
+// unless a trusted installer put the app there. These are the package names of
+// the store fronts that make that dialog impossible, so the onboarding help
+// text can be aimed only at the people who will actually meet it.
+private val STORE_INSTALLERS = setOf("com.android.vending", "com.google.android.feedback")
+
 class BlockingModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Blocking")
+
+    // Null early in startup on some launches, and a leftover key is not worth
+    // crashing over, so this is skipped rather than forced when it is.
+    OnCreate {
+      appContext.reactContext?.let { BlockingPreferences.dropRetiredKeys(it) }
+    }
 
     AsyncFunction("startSession") { blocklist: List<String> ->
       val context = requireNotNull(appContext.reactContext)
@@ -124,10 +136,6 @@ class BlockingModule : Module() {
       BlockingPreferences.setAppearanceMode(requireNotNull(appContext.reactContext), mode)
     }
 
-    AsyncFunction("setShieldMessage") { message: String ->
-      BlockingPreferences.setShieldMessage(requireNotNull(appContext.reactContext), message)
-    }
-
     AsyncFunction("hasUsageAccess") {
       hasUsageAccess(requireNotNull(appContext.reactContext))
     }
@@ -138,6 +146,10 @@ class BlockingModule : Module() {
 
     AsyncFunction("hasAccessibilityAccess") {
       hasAccessibilityAccess(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("wasInstalledFromStore") {
+      wasInstalledFromStore(requireNotNull(appContext.reactContext))
     }
 
     AsyncFunction("getScreenTimeToday") {
@@ -357,6 +369,21 @@ class BlockingModule : Module() {
         service.packageName == context.packageName &&
           service.name == AccessibilityBlockService::class.java.name
       }
+  }
+
+  private fun wasInstalledFromStore(context: Context): Boolean {
+    // Restricted settings did not exist before Android 13, and the install
+    // source API only landed in Android 11, so older devices are reported as
+    // store installs to keep help they cannot use off their screen.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return true
+    val installer = try {
+      context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+    } catch (e: Exception) {
+      null
+    }
+    // An absent installer is the sideloaded case, so it falls through to false
+    // rather than hiding the one instruction that would unstick the user.
+    return installer != null && STORE_INSTALLERS.contains(installer)
   }
 
   private fun hasUsageAccess(context: Context): Boolean {

@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from "expo";
+import { Platform } from "react-native";
 
 export type InstalledApp = { name: string; pkg: string; icon: string };
 type InstalledAppSummary = Omit<InstalledApp, "icon">;
@@ -31,10 +32,10 @@ type BlockingNativeModule = {
   getSessionState?(): Promise<BlockingSessionState>;
   consumeStudInResult?(): Promise<StudInResult>;
   setAppearanceMode?(mode: "system" | "light" | "dark"): Promise<void>;
-  setShieldMessage?(message: string): Promise<void>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
+  wasInstalledFromStore?(): Promise<boolean>;
   getScreenTimeToday(): Promise<number>;
   getAppScreenTimeToday(): Promise<string>;
   getScreenTimeInsights(): Promise<string>;
@@ -138,18 +139,6 @@ export async function syncBlockingAppearance(mode: "system" | "light" | "dark"):
   await native?.setAppearanceMode?.(mode);
 }
 
-/**
- * Mirror the shield message into SharedPreferences, where the foreground
- * service can read it without the JS runtime being awake. An empty string means
- * "fall back to TockIn's own line".
- *
- * Optional on the native side: a user running a build from before this shipped
- * simply keeps the default shield rather than crashing on a missing function.
- */
-export async function syncShieldMessage(message: string): Promise<void> {
-  await native?.setShieldMessage?.(message);
-}
-
 export async function hasUsageAccess(): Promise<boolean> {
   return native ? native.hasUsageAccess() : false;
 }
@@ -160,6 +149,15 @@ export async function hasOverlayPermission(): Promise<boolean> {
 
 export async function hasAccessibilityAccess(): Promise<boolean> {
   return native?.hasAccessibilityAccess ? native.hasAccessibilityAccess() : false;
+}
+
+// Only sideloaded installs on Android 13 and up run into the restricted
+// setting, so everyone else is spared an explanation of a dialog they will
+// never see.
+export async function needsRestrictedSettingHelp(): Promise<boolean> {
+  if (Platform.OS !== "android" || Number(Platform.Version) < 33) return false;
+  if (typeof native?.wasInstalledFromStore !== "function") return false;
+  return !(await native.wasInstalledFromStore());
 }
 
 export function hasAccessibilityServiceSupport(): boolean {

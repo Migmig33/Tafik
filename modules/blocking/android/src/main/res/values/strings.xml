@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="tockin_accessibility_label">TockIn app blocking</string>
+  <string name="tockin_accessibility_label">TockIn</string>
+  <string name="tockin_accessibility_summary">Blocks your chosen apps during a focus session</string>
   <string name="tockin_accessibility_description">Detects when a selected blocked app opens and immediately returns to Home during an active focus session.</string>
 </resources>

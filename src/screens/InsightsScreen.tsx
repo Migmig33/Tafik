@@ -14,7 +14,7 @@ import TrendingUp from "lucide-react-native/icons/trending-up";
 import type { LucideIcon } from "lucide-react-native";
 import { UsageAccessDisclosure } from "../AccessDisclosures";
 import { AppScreenTime, getInstalledApps, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
-import { Screen, Title } from "../components";
+import { Screen, Skeleton, Title } from "../components";
 import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import { getSessions, SessionRecord, todayKey } from "../store";
 import { space, useTheme } from "../theme";
@@ -349,7 +349,7 @@ export default function InsightsScreen() {
             <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{error}</Text>
           </View>
         ) : days === undefined ? (
-          <Text style={{ color: colors.textDim, marginBottom: space(3) }}>Loading screen time…</Text>
+          <ScreenTimeCardSkeleton />
         ) : days === null ? (
           <Pressable
             onPress={() => setUsageDisclosureOpen(true)}
@@ -431,6 +431,8 @@ export default function InsightsScreen() {
               ) : null}
             </View>
           </>
+        ) : days === undefined ? (
+          <AppUsageSkeleton />
         ) : null}
       </ScrollView>
 
@@ -471,13 +473,13 @@ function FocusSummaryCard({
         <FocusInsightMetric
           icon={Timer}
           label="Focused time"
-          value={seconds === undefined ? "—" : duration(seconds)}
+          value={seconds === undefined ? undefined : duration(seconds)}
         />
         <View style={[styles.focusDivider, { backgroundColor: colors.border }]} />
         <FocusInsightMetric
           icon={Repeat2}
           label="Sessions"
-          value={sessions === undefined ? "—" : String(sessions)}
+          value={sessions === undefined ? undefined : String(sessions)}
         />
       </View>
     </View>
@@ -491,7 +493,8 @@ function FocusInsightMetric({
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  /** undefined while the read is still in flight, which the block stands in for. */
+  value?: string;
 }) {
   const { colors } = useTheme();
   return (
@@ -499,11 +502,71 @@ function FocusInsightMetric({
       <View style={[styles.focusMetricIcon, { backgroundColor: colors.accentWash }]}>
         <Icon size={17} color={colors.accent} strokeWidth={2.2} />
       </View>
-      <View>
-        <Text style={[styles.focusMetricValue, { color: colors.text }]}>{value}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {value === undefined ? (
+          <Skeleton width="70%" height={20} style={{ marginBottom: 4 }} />
+        ) : (
+          <Text style={[styles.focusMetricValue, { color: colors.text }]}>{value}</Text>
+        )}
         <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
       </View>
     </View>
+  );
+}
+
+// The two cards below stand in for the screen-time read, which goes out to
+// Android Usage Access and can take a beat. They carry the same borders,
+// padding and row heights as the real cards so nothing jumps when the numbers
+// land.
+function ScreenTimeCardSkeleton() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.savingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.screenHeader}>
+        <Skeleton width={40} height={40} borderRadius={13} />
+        <View style={{ flex: 1 }}>
+          <Skeleton width="60%" height={13} />
+        </View>
+        <Skeleton width={54} height={15} />
+      </View>
+      <Skeleton width="72%" height={19} style={{ marginBottom: space(0.75) }} />
+      <Skeleton width="90%" height={13} />
+      <View style={styles.savingBars}>
+        <Skeleton width="100%" height={34} borderRadius={10} />
+        <Skeleton width="100%" height={34} borderRadius={10} />
+      </View>
+    </View>
+  );
+}
+
+const APP_SKELETON_WIDTHS = ["55%", "38%", "64%", "44%", "50%"] as const;
+
+function AppUsageSkeleton() {
+  const { colors } = useTheme();
+  return (
+    <>
+      <View style={styles.listHeader}>
+        <Skeleton width={96} height={17} />
+        <Skeleton width={54} height={13} />
+      </View>
+      <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {APP_SKELETON_WIDTHS.map((width, index) => (
+          <View
+            key={index}
+            style={[
+              styles.appRow,
+              index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+            ]}
+          >
+            <Skeleton width={28} height={28} borderRadius={9} />
+            <View style={{ flex: 1 }}>
+              <Skeleton width={width} height={14} />
+            </View>
+            <Skeleton width={42} height={13} />
+          </View>
+        ))}
+      </View>
+    </>
   );
 }
 

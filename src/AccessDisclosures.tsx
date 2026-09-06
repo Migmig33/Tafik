@@ -19,6 +19,7 @@ type AccessDisclosureProps = DisclosureControls & {
   intro: string;
   items: readonly string[];
   note: string;
+  restrictedSettingHelp?: boolean;
 };
 
 /**
@@ -27,7 +28,9 @@ type AccessDisclosureProps = DisclosureControls & {
  * Usage activity is sensitive too, so its system-access route uses the same
  * clear pattern rather than relying on a short permission-row description.
  */
-export function AccessibilityDisclosure(controls: DisclosureControls) {
+export function AccessibilityDisclosure(
+  controls: DisclosureControls & { restrictedSettingHelp?: boolean }
+) {
   return (
     <AccessDisclosure
       {...controls}
@@ -76,6 +79,7 @@ function AccessDisclosure({
   intro,
   items,
   note,
+  restrictedSettingHelp = false,
 }: AccessDisclosureProps) {
   const { colors } = useTheme();
 
@@ -101,6 +105,24 @@ function AccessDisclosure({
               </DisclosureItem>
             ))}
           </View>
+
+          {/* Android refuses to enable Accessibility for a sideloaded app and
+              says only that the setting is unavailable, which reads as a broken
+              app. The way out is a menu the user has no reason to look in. */}
+          {restrictedSettingHelp && (
+            <View
+              style={[styles.help, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Text style={[styles.helpTitle, { color: colors.text }]}>
+                If Android says this setting is unavailable
+              </Text>
+              <Text style={[styles.helpBody, { color: colors.textDim }]}>
+                Open Settings, then Apps, then TockIn. Tap the three dot menu at the top right
+                and choose Allow restricted settings. Android asks for this because TockIn was
+                installed from a file rather than the Play Store.
+              </Text>
+            </View>
+          )}
 
           <Text style={[styles.note, { color: colors.textDim }]}>{note}</Text>
         </ScrollView>
@@ -192,6 +214,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: space(2),
+  },
+  help: {
+    borderRadius: radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: space(2),
+    padding: space(2),
+  },
+  helpTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: space(0.75),
+  },
+  helpBody: {
+    fontSize: 13,
+    lineHeight: 19,
   },
   actions: {
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -314,13 +314,8 @@ class ForegroundBlockService : Service() {
       LinearLayout.LayoutParams.WRAP_CONTENT
     ).apply { topMargin = dp(24) })
 
-    // The user's own reason for locking this app carries further than ours,
-    // so it takes this line when they have written one.
-    val shieldMessage = BlockingPreferences.shieldMessage(this).ifBlank {
-      "This app will close."
-    }
     card.addView(makeText(
-      shieldMessage,
+      "This app will close.",
       15f,
       palette.textDim
     ).apply {

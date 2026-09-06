@@ -26,7 +26,6 @@ internal object BlockingPreferences {
   private const val ACTIVE = "active"
   private const val BLOCKLIST = "blocklist"
   private const val APPEARANCE = "appearance"
-  private const val SHIELD_MESSAGE = "shieldMessage"
   private const val SESSION_MODE = "sessionMode"
   private const val SESSION_STARTED_AT = "sessionStartedAt"
   private const val STUDY_DURATION_MS = "studyDurationMs"
@@ -41,12 +40,18 @@ internal object BlockingPreferences {
   const val PHASE_STUDY = "study"
   const val PHASE_BREAK = "break"
 
-  // Long enough for a sentence worth reading on a shield, short enough that it
-  // cannot push the unlock button off a small screen.
-  const val SHIELD_MESSAGE_MAX_LENGTH = 60
-
   private fun prefs(context: Context) =
     context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+  // Written by earlier builds and unreachable now. The shield draws a fixed
+  // line, so nothing will ever read the message a user once saved here.
+  private val RETIRED_KEYS = listOf("shieldMessage")
+
+  fun dropRetiredKeys(context: Context) {
+    val editor = prefs(context).edit()
+    RETIRED_KEYS.forEach(editor::remove)
+    editor.apply()
+  }
 
   @Synchronized
   fun start(context: Context, packages: List<String>) {
@@ -184,16 +189,6 @@ internal object BlockingPreferences {
   fun setAppearanceMode(context: Context, mode: String) {
     prefs(context).edit().putString(APPEARANCE, mode).apply()
   }
-
-  /** The user's own words for the shield. Blank means "use TockIn's line". */
-  fun setShieldMessage(context: Context, message: String) {
-    prefs(context).edit()
-      .putString(SHIELD_MESSAGE, message.trim().take(SHIELD_MESSAGE_MAX_LENGTH))
-      .apply()
-  }
-
-  fun shieldMessage(context: Context): String =
-    prefs(context).getString(SHIELD_MESSAGE, "").orEmpty()
 
   fun isDarkAppearance(context: Context): Boolean {
     return when (prefs(context).getString(APPEARANCE, "system")) {

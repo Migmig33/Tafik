@@ -16,7 +16,6 @@ import {
   hasStudInSessionSupport,
   startBlockingSession,
   startStudInBlockingSession,
-  syncShieldMessage,
 } from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
@@ -42,11 +41,11 @@ import {
   getBlocklist,
   getOnboardingDone,
   getRegisteredCards,
-  getShieldMessage,
   type FocusMode,
   getFocusMode,
   getStudInConfig,
   getWelcomeSeen,
+  purgeRetiredKeys,
   recordSession,
   setActiveSessionStartedAt,
   setWelcomeSeen,
@@ -137,11 +136,10 @@ function AppContent() {
     })();
   }, []);
 
-  // Keep the service's native copy in step with the locally stored message.
+  // Cleared on launch rather than on the way out of the removed feature: the
+  // build that dropped it is the first one that can reach these phones at all.
   useEffect(() => {
-    void getShieldMessage()
-      .then(syncShieldMessage)
-      .catch(() => {});
+    void purgeRetiredKeys().catch(() => {});
   }, []);
 
   // Refresh block count whenever we land back on home.
