@@ -236,12 +236,22 @@ export function GuideSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       {/* The backdrop, the button and the Android back gesture all dismiss, so
-          a first-run user can never be trapped behind the explanation. */}
-      <Pressable style={[styles.scrim, { backgroundColor: colors.scrim }]} onPress={onClose}>
+          a first-run user can never be trapped behind the explanation.
+
+          It sits behind the card as a sibling rather than wrapping it. As the
+          card's parent it competed with the step list for the gesture: a
+          Pressable claims a touch on the way down, so a drag that started on a
+          step was taken as a press and the list would not scroll back. A
+          sibling never sees those touches, and a tap on the card still misses
+          it because the card is drawn on top. */}
+      <View style={[styles.scrim, { backgroundColor: colors.scrim }]}>
         <Pressable
-          style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={() => {}}
-        >
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
+        <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.sheetIcon, { backgroundColor: colors.accentWash }]}>
             <Icon size={20} color={colors.accent} strokeWidth={2.1} />
           </View>
@@ -249,12 +259,10 @@ export function GuideSheet({
           <Text style={[styles.sheetIntro, { color: colors.textDim }]}>{intro}</Text>
 
           {/* The steps scroll rather than the card growing: on a short screen
-              the last one must still be reachable with the button below it. */}
-          <ScrollView
-            style={styles.stepScroll}
-            contentContainerStyle={styles.steps}
-            showsVerticalScrollIndicator={false}
-          >
+              the last one must still be reachable with the button below it.
+              The indicator stays visible, because hiding it made a guide that
+              scrolls look like one that had simply been cut off. */}
+          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.steps}>
             {steps.map((step) => {
               const StepIcon = step.icon;
               return (
@@ -274,8 +282,8 @@ export function GuideSheet({
           <View style={styles.action}>
             <PrimaryButton label="Got it" onPress={onClose} />
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -323,14 +331,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  // Bounded so a long guide grows the list rather than the card.
+  // Bounded so a long guide grows the list rather than the card. flexGrow: 0
+  // keeps a short guide from stretching, but on its own it left the steps at
+  // their full height inside a card the maxHeight had already clamped, so the
+  // overflow ran under the button. Shrinking is what actually hands the
+  // leftover height back to the scroll.
   stepScroll: {
     flexGrow: 0,
+    flexShrink: 1,
+    minHeight: 0,
     marginTop: space(2),
   },
   steps: {
     gap: space(2),
-    paddingBottom: space(0.5),
+    // Keeps the last step off the button rather than ending flush against it,
+    // which read as the two overlapping.
+    paddingBottom: space(1),
   },
   step: {
     flexDirection: "row",
