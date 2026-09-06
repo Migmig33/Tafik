@@ -9,6 +9,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import type { DimensionValue } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { radius, space, useTheme } from "./theme";
 import { Text } from "./typography";
@@ -623,7 +624,7 @@ export function BrandLockup({
       >
         <Text style={[styles.brandTitle, { color: colors.text }]}>TockIn</Text>
         {showTagline ? (
-          <Text style={[styles.brandTagline, { color: colors.textDim }]}>tap in to lock in</Text>
+          <Text style={[styles.brandTagline, { color: colors.textDim }]}>Tap in. Stay locked in.</Text>
         ) : null}
       </Animated.View>
     </>
@@ -702,5 +703,85 @@ export function AnimatedSwapText({
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
       {children(displayed)}
     </Animated.View>
+  );
+}
+
+// One driver for every skeleton on screen. A per-block loop would start
+// counting from whatever moment that block mounted, and a list of rows would
+// visibly ripple out of phase instead of breathing as one surface.
+const skeletonPulse = new Animated.Value(0);
+let skeletonBlocks = 0;
+let skeletonLoop: Animated.CompositeAnimation | null = null;
+
+function useSkeletonPulse() {
+  useEffect(() => {
+    skeletonBlocks += 1;
+    if (!skeletonLoop) {
+      skeletonLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(skeletonPulse, {
+            toValue: 1,
+            duration: 700,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(skeletonPulse, {
+            toValue: 0,
+            duration: 700,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      skeletonLoop.start();
+    }
+    return () => {
+      skeletonBlocks -= 1;
+      // The last block leaving takes the loop with it, so nothing keeps
+      // animating behind a screen that has already finished loading.
+      if (skeletonBlocks === 0) {
+        skeletonLoop?.stop();
+        skeletonLoop = null;
+        skeletonPulse.setValue(0);
+      }
+    };
+  }, []);
+  return skeletonPulse;
+}
+
+/**
+ * A placeholder block shaped like the content that is still loading. It is
+ * driven on the native thread because the reads it stands in for are native
+ * calls that can leave the JS thread busy, which is exactly when a spinner
+ * stutters and starts reading as a freeze.
+ */
+export function Skeleton({
+  width,
+  height,
+  borderRadius = 6,
+  style,
+}: {
+  width?: DimensionValue;
+  height: DimensionValue;
+  borderRadius?: number;
+  style?: ViewStyle;
+}) {
+  const { colors } = useTheme();
+  const pulse = useSkeletonPulse();
+  return (
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[
+        {
+          width,
+          height,
+          borderRadius,
+          backgroundColor: colors.accentWash,
+          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.4] }),
+        },
+        style,
+      ]}
+    />
   );
 }

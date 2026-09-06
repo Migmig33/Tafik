@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -12,11 +11,20 @@ import PackageOpen from "lucide-react-native/icons/package-open";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Search from "lucide-react-native/icons/search";
 import { getInstalledApps, InstalledApp } from "../blocking";
-import { Body, Screen, Title } from "../components";
+import { Body, Screen, Skeleton, Title } from "../components";
 import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
 import { getBlocklist, setBlocklist } from "../store";
 import { radius, space, useTheme } from "../theme";
 import { Text, TextInput } from "../typography";
+
+/** One row of the card, which is either an installed app or a placeholder. */
+type Row =
+  | { kind: "app"; app: InstalledApp }
+  | { kind: "skeleton"; key: string; nameWidth: `${number}%` };
+
+// Real app names are not all one length. Uniform bars read as a loading
+// pattern; uneven ones read as names that have not arrived yet.
+const SKELETON_NAME_WIDTHS = ["58%", "42%", "67%", "35%", "50%", "61%"] as const;
 
 export default function BlocklistScreen() {
   const { colors } = useTheme();
@@ -61,6 +69,22 @@ export default function BlocklistScreen() {
     [apps, query]
   );
 
+  // The skeleton is not a separate widget with its own card: it is this list
+  // holding placeholder rows. Anything else has to reproduce the height the
+  // list settles on, and getting that wrong is what left the placeholder card
+  // running a row longer than the loaded one and under the tab bar.
+  const rows = useMemo<Row[]>(
+    () =>
+      loading
+        ? SKELETON_NAME_WIDTHS.map((nameWidth, index) => ({
+            kind: "skeleton",
+            key: `skeleton-${index}`,
+            nameWidth,
+          }))
+        : filtered.map((app) => ({ kind: "app", app })),
+    [loading, filtered]
+  );
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -91,12 +115,7 @@ export default function BlocklistScreen() {
         </View>
       </View>
 
-      {loading ? (
-        <View style={[styles.stateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={{ color: colors.textDim, fontSize: 14 }}>Loading your app icons…</Text>
-        </View>
-      ) : loadError ? (
+      {loadError ? (
         <View style={[styles.stateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <PackageOpen size={28} color={colors.accent} strokeWidth={1.8} />
           <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600", textAlign: "center" }}>
@@ -115,10 +134,12 @@ export default function BlocklistScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.pkg}
+          data={rows}
+          keyExtractor={(item) => (item.kind === "app" ? item.app.pkg : item.key)}
           style={[styles.list, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          contentContainerStyle={{ paddingHorizontal: space(1.5) }}
+          contentContainerStyle={styles.listContent}
+          // Placeholder rows stand for a list nobody can act on yet.
+          scrollEnabled={!loading}
           ListEmptyComponent={
             <Text style={{ color: colors.textDim, fontSize: 14, textAlign: "center", padding: space(3) }}>
               {query.trim() ? "No apps match your search." : "No launchable apps found."}
@@ -127,29 +148,40 @@ export default function BlocklistScreen() {
           ItemSeparatorComponent={() => (
             <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }} />
           )}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => toggle(item.pkg)} style={styles.appRow}>
-              <Image
-                source={{ uri: item.icon }}
-                style={[styles.appIcon, { backgroundColor: colors.accentWash }]}
-                resizeMode="contain"
-                fadeDuration={0}
-              />
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-                  {item.name}
-                </Text>
-                <Text numberOfLines={1} style={{ color: colors.textDim, fontSize: 11, marginTop: 2 }}>
-                  {selected.has(item.pkg) ? "Locked during focus" : "Available during focus"}
-                </Text>
+          renderItem={({ item }) =>
+            item.kind === "skeleton" ? (
+              <View style={styles.appRow}>
+                <Skeleton width={42} height={42} borderRadius={11} />
+                <View style={{ flex: 1 }}>
+                  <Skeleton width={item.nameWidth} height={13} />
+                  <Skeleton width="30%" height={10} style={{ marginTop: space(0.75) }} />
+                </View>
+                <Skeleton width={51} height={31} borderRadius={radius.pill} />
               </View>
-              <Switch
-                value={selected.has(item.pkg)}
-                onValueChange={() => toggle(item.pkg)}
-                trackColor={{ true: colors.accent, false: colors.border }}
-              />
-            </Pressable>
-          )}
+            ) : (
+              <Pressable onPress={() => toggle(item.app.pkg)} style={styles.appRow}>
+                <Image
+                  source={{ uri: item.app.icon }}
+                  style={[styles.appIcon, { backgroundColor: colors.accentWash }]}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+                    {item.app.name}
+                  </Text>
+                  <Text numberOfLines={1} style={{ color: colors.textDim, fontSize: 11, marginTop: 2 }}>
+                    {selected.has(item.app.pkg) ? "Locked during focus" : "Available during focus"}
+                  </Text>
+                </View>
+                <Switch
+                  value={selected.has(item.app.pkg)}
+                  onValueChange={() => toggle(item.app.pkg)}
+                  trackColor={{ true: colors.accent, false: colors.border }}
+                />
+              </Pressable>
+            )
+          }
         />
       )}
 
@@ -158,6 +190,9 @@ export default function BlocklistScreen() {
   );
 }
 
+// Reading the launcher for every installed app is slow enough to see, and the
+// list it fills is a fixed shape, so the wait is spent showing that shape
+// rather than a spinner that says nothing about what is coming.
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -187,9 +222,24 @@ const styles = StyleSheet.create({
     paddingVertical: space(0.6),
   },
   list: {
+    // A FlatList inherits flexGrow:1 / flexShrink:1 / flexBasis:auto from
+    // ScrollView, so without this its height is a function of how much content
+    // it holds: eight placeholder rows and fifty app rows give different flex
+    // bases, shrink is distributed in proportion to basis, and the card lands
+    // on two different heights a second apart. flex:1 sets flexBasis to 0, so
+    // the card takes the space the screen leaves it and content height stops
+    // entering into it. This is the whole fix for the loading/loaded jump —
+    // the card is now the same height with two apps, fifty apps, or none.
+    flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.card,
     overflow: "hidden",
+  },
+  listContent: {
+    // Lets the empty-state text sit in the middle of a card that is now taller
+    // than its contents, instead of clinging to the top edge.
+    flexGrow: 1,
+    paddingHorizontal: space(1.5),
   },
   appRow: {
     minHeight: 68,
