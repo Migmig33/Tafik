@@ -4,8 +4,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.app.KeyguardManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import android.content.ContentResolver
 import android.content.res.ColorStateList
 import android.content.Context
 import android.content.Intent
@@ -17,6 +19,8 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.media.AudioAttributes
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -94,6 +98,7 @@ class ForegroundBlockService : Service() {
   private var unshieldCandidate: String? = null
   private var unshieldCandidateSince = 0L
   private var notificationStateKey: String? = null
+  private var scheduledPhaseEndsAt = 0L
   private val poppinsRegular: Typeface by lazy {
     loadTypeface("fonts/Poppins_400Regular.ttf", Typeface.NORMAL)
   }
@@ -103,10 +108,25 @@ class ForegroundBlockService : Service() {
 
   private val monitor = object : Runnable {
     override fun run() {
-      val session = BlockingPreferences.sessionState(this@ForegroundBlockService)
+      val now = System.currentTimeMillis()
+      val session = BlockingPreferences.sessionState(this@ForegroundBlockService, now)
       if (!session.active) {
+        StudInAlarmScheduler.cancel(this@ForegroundBlockService)
+        scheduledPhaseEndsAt = 0L
+        if (BlockingPreferences.consumeStudInCompletionAlert(this@ForegroundBlockService)) {
+          showStudInCompletionAlert()
+        }
         stopSelf()
         return
+      }
+      syncStudInAlarm(session)
+
+      if (BlockingPreferences.acknowledgeStudInPhase(
+          this@ForegroundBlockService,
+          session
+        ) && now - session.phaseStartedAt <= TRANSITION_ALERT_GRACE_MS
+      ) {
+        showStudInTransitionAlert(session)
       }
       refreshNotification(session)
       val foreground = currentForegroundPackage()
@@ -168,6 +188,7 @@ class ForegroundBlockService : Service() {
     val session = BlockingPreferences.sessionState(this)
     startForeground(NOTIFICATION_ID, buildNotification(session))
     notificationStateKey = notificationKey(session)
+    syncStudInAlarm(session)
     handler.removeCallbacks(monitor)
     handler.post(monitor)
     return START_STICKY
@@ -525,7 +546,7 @@ class ForegroundBlockService : Service() {
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-    val channel = NotificationChannel(
+    val focusChannel = NotificationChannel(
       CHANNEL_ID,
       "TockIn focus session",
       NotificationManager.IMPORTANCE_LOW
@@ -533,7 +554,27 @@ class ForegroundBlockService : Service() {
       description = "Keeps app locking active during a focus session."
       setShowBadge(false)
     }
-    getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    val timerAlarmChannel = NotificationChannel(
+      StudInAlarmScheduler.TIMER_ALARM_CHANNEL_ID,
+      "StudIn timer alarms",
+      NotificationManager.IMPORTANCE_HIGH
+    ).apply {
+      description = "Sounds when a StudIn Study, Break, or full cycle ends."
+      setSound(
+        alarmSound(),
+        AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+      )
+      enableVibration(true)
+      vibrationPattern = longArrayOf(0L, 350L, 180L, 350L)
+      lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+    }
+    getSystemService(NotificationManager::class.java).apply {
+      createNotificationChannel(focusChannel)
+      createNotificationChannel(timerAlarmChannel)
+    }
   }
 
   private fun buildNotification(session: BlockingSessionState): android.app.Notification {
@@ -543,11 +584,11 @@ class ForegroundBlockService : Service() {
       session.mode == BlockingPreferences.MODE_STUDIN &&
         session.phase == BlockingPreferences.PHASE_STUDY -> {
         title = "StudIn study ${session.currentRound} of ${session.totalRounds}"
-        detail = "Selected apps stay blocked until this Study ends."
+        detail = "Break starts when the timer reaches 00:00."
       }
       session.mode == BlockingPreferences.MODE_STUDIN -> {
         title = "StudIn break after round ${session.currentRound}"
-        detail = "Apps are available. The next Study starts automatically."
+        detail = "The next Study starts when the timer reaches 00:00."
       }
       else -> {
         title = "TockIn is locking selected apps"
@@ -555,11 +596,12 @@ class ForegroundBlockService : Service() {
       }
     }
 
-    return NotificationCompat.Builder(this, CHANNEL_ID)
+    val notification = NotificationCompat.Builder(this, CHANNEL_ID)
       .setContentTitle(title)
       .setContentText(detail)
       .setSmallIcon(applicationInfo.icon)
       .setOngoing(true)
+      .setOnlyAlertOnce(true)
       .setContentIntent(
         PendingIntent.getActivity(
           this,
@@ -568,7 +610,101 @@ class ForegroundBlockService : Service() {
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
       )
-      .build()
+
+    if (session.mode == BlockingPreferences.MODE_STUDIN && session.phase != null) {
+      // Android renders and updates this countdown itself, so it remains live
+      // in the notification shade while React Native is backgrounded/asleep.
+      notification
+        .setWhen(session.phaseEndsAt)
+        .setShowWhen(true)
+        .setUsesChronometer(true)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        notification.setChronometerCountDown(true)
+      }
+    }
+
+    return notification.build()
+  }
+
+  private fun showStudInTransitionAlert(session: BlockingSessionState) {
+    if (session.phase == BlockingPreferences.PHASE_BREAK) {
+      showTimerAlarm(
+        "Study finished — break started",
+        "Round ${session.currentRound} of ${session.totalRounds} is done. Apps are available."
+      )
+    } else {
+      showTimerAlarm(
+        "Break finished — Study ${session.currentRound} started",
+        "The timer is running and your selected apps are blocked again."
+      )
+    }
+  }
+
+  private fun showStudInCompletionAlert() {
+    showTimerAlarm(
+      "StudIn complete",
+      "All Study rounds are done. Your selected apps are available."
+    )
+  }
+
+  private fun showTimerAlarm(title: String, detail: String) {
+    val openStudIn = StudInAlarmScheduler.openStudInPendingIntent(this, fullScreen = false)
+    val notification = NotificationCompat.Builder(
+      this,
+      StudInAlarmScheduler.TIMER_ALARM_CHANNEL_ID
+    )
+      .setContentTitle(title)
+      .setContentText(detail)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+      .setSmallIcon(applicationInfo.icon)
+      .setAutoCancel(true)
+      .setTimeoutAfter(TIMER_ALARM_TIMEOUT_MS)
+      .setCategory(NotificationCompat.CATEGORY_ALARM)
+      .setPriority(NotificationCompat.PRIORITY_MAX)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setContentIntent(openStudIn)
+      .addAction(
+        applicationInfo.icon,
+        "Silence",
+        StudInAlarmScheduler.silencePendingIntent(this)
+      )
+      .addAction(applicationInfo.icon, "Open StudIn", openStudIn)
+
+    val phoneLocked =
+      (getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+    if (phoneLocked &&
+      BlockingPreferences.fullScreenStudInAlarmsEnabled(this) &&
+      StudInAlarmScheduler.hasFullScreenAlarmAccess(this)
+    ) {
+      notification.setFullScreenIntent(
+        StudInAlarmScheduler.openStudInPendingIntent(this, fullScreen = true),
+        true
+      )
+    }
+
+    // On Android 8+ sound and vibration belong to the channel. These calls
+    // provide the same timer-alarm behaviour on older supported devices.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      notification
+        .setSound(alarmSound())
+        .setVibrate(longArrayOf(0L, 350L, 180L, 350L))
+    }
+
+    getSystemService(NotificationManager::class.java).notify(
+      StudInAlarmScheduler.TIMER_ALARM_NOTIFICATION_ID,
+      notification.build()
+    )
+  }
+
+  private fun alarmSound(): Uri = Uri.parse(
+    "${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/${R.raw.alarm}"
+  )
+
+  private fun syncStudInAlarm(session: BlockingSessionState) {
+    if (!session.active || session.mode != BlockingPreferences.MODE_STUDIN) return
+    if (scheduledPhaseEndsAt == session.phaseEndsAt) return
+    StudInAlarmScheduler.schedule(this, session)
+    scheduledPhaseEndsAt = session.phaseEndsAt
   }
 
   private fun refreshNotification(session: BlockingSessionState) {
@@ -591,5 +727,7 @@ class ForegroundBlockService : Service() {
     private const val EVENT_LOOKBACK_MS = 3000L
     private const val INITIAL_USAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000L
     private const val EXIT_CONFIRMATION_MS = 1500L
+    private const val TRANSITION_ALERT_GRACE_MS = 60 * 1000L
+    private const val TIMER_ALARM_TIMEOUT_MS = 30 * 1000L
   }
 }

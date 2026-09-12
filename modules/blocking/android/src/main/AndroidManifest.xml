@@ -2,7 +2,9 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
   <!-- TockIn only needs apps the user can launch and select for blocking. This
        intent signature provides that narrow visibility without access to the
@@ -37,5 +39,13 @@
         android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
         android:value="Monitors foreground apps during a user-started focus session and shields apps selected by the user." />
     </service>
+
+    <receiver
+      android:name="expo.modules.blocking.StudInAlarmReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

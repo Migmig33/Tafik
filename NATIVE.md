@@ -21,11 +21,18 @@ records its architecture and constraints for future maintenance.
    persistent foreground notification alive while a session runs. TockIn remains
    open-ended. StudIn derives Study and Break phases from its persisted start
    time, durations, and round count; the native watchdog releases restrictions
-   during Break and reapplies them at the next Study without waking JS.
+   during Break and reapplies them at the next Study without waking JS. Its
+   ongoing notification uses Android's native countdown chronometer. Each phase
+   end is also scheduled with `AlarmManager`; its high-importance alarm channel
+   plays the bundled `res/raw/alarm.wav` and vibrates at every boundary and at
+   completion. `StudInAlarmReceiver` wakes the service to resolve state and
+   schedule the next boundary.
 5. **Read blocking state without JS awake.** Mirror the blocklist, appearance,
    and StudIn schedule into `SharedPreferences` so the service can
    enforce and complete a live session after the React Native runtime sleeps. NFC
-   reads happen in the app UI. One scan starts StudIn; it does not normally end it.
+   reads happen in the app UI. The last observed StudIn phase and pending final
+   alert are persisted too, preventing duplicate or lost alarms across ordinary
+   service restarts. One scan starts StudIn; it does not normally end it.
 
 ## Accessibility policy
 
@@ -54,4 +61,10 @@ getAppScreenTimeToday(): Promise<string>                        // per-app foreg
 getScreenTimeInsights(): Promise<string>                        // fourteen daily totals + apps JSON
 setAppearanceMode(mode: "system" | "light" | "dark"): Promise<void>
 wasInstalledFromStore(): Promise<boolean>            // false means Android restricts the Accessibility toggle
+hasExactAlarmAccess(): Promise<boolean>
+requestExactAlarmAccess(): Promise<void>
+hasFullScreenAlarmAccess(): Promise<boolean>
+requestFullScreenAlarmAccess(): Promise<void>
+getFullScreenStudInAlarmsEnabled(): Promise<boolean>
+setFullScreenStudInAlarmsEnabled(enabled: boolean): Promise<void>
 ```

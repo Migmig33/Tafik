@@ -148,13 +148,13 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Palette,
         title: "Appearance and mode",
         body:
-          "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
+          "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle, with an optional alarm above the lock screen. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
       },
       {
         icon: ScanLine,
         title: "System access and cards",
         body:
-          "Check the Android permissions TockIn needs, and add or remove NFC cards. A permission switched off elsewhere shows as Required here.",
+          "Check the Android permissions TockIn needs, including precise StudIn alarms, and add or remove NFC cards. A permission switched off elsewhere shows as Required or Set up here.",
       },
       {
         icon: ShieldAlert,

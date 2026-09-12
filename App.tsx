@@ -4,8 +4,8 @@ import { Poppins_500Medium } from "@expo-google-fonts/poppins/500Medium";
 import { Poppins_600SemiBold } from "@expo-google-fonts/poppins/600SemiBold";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins/700Bold";
 import { useFonts } from "expo-font";
-import { useEffect, useRef, useState } from "react";
-import { Alert, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Linking, View } from "react-native";
 import {
   BlockingSessionState,
   consumeStudInResult,
@@ -71,6 +71,10 @@ function AppContent() {
   const { colors, isDark } = useTheme();
   const [ready, setReady] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
+  // Keep this callback stable while an active StudIn session refreshes every
+  // 500 ms. A new function on every refresh would restart IntroScreen's timer,
+  // leaving the app on the intro until the entire session ended.
+  const finishIntro = useCallback(() => setIntroFinished(true), []);
   // Assume seen until storage says otherwise, so a returning user never gets a
   // flash of the first-run copy while the read is in flight.
   const [welcomeSeen, setWelcomeSeenState] = useState(true);
@@ -91,6 +95,17 @@ function AppContent() {
   const [scanning, setScanning] = useState<null | "start" | "end" | "studin">(null);
   const endingSession = useRef(false);
   const syncingStudIn = useRef(false);
+
+  // Alarm notification/full-screen intents use the app's existing deep link.
+  // A cold launch is already routed from native session state below; this
+  // listener covers an existing React activity that was sitting in another tab.
+  useEffect(() => {
+    const openAlarmTarget = ({ url }: { url: string }) => {
+      if (url.startsWith("tockin://studin")) setScreen("studin");
+    };
+    const subscription = Linking.addEventListener("url", openAlarmTarget);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -225,7 +240,7 @@ function AppContent() {
     return (
       <>
         <StatusBar style={isDark ? "light" : "dark"} />
-        <IntroScreen onFinish={() => setIntroFinished(true)} />
+        <IntroScreen onFinish={finishIntro} />
       </>
     );
   }

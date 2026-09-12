@@ -5,12 +5,14 @@ import {
   AppState,
   Easing,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
 import Accessibility from "lucide-react-native/icons/accessibility";
+import AlarmClock from "lucide-react-native/icons/alarm-clock";
 import Bell from "lucide-react-native/icons/bell";
 import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import FileText from "lucide-react-native/icons/file-text";
@@ -31,9 +33,15 @@ import type { LucideIcon } from "lucide-react-native";
 import { AccessibilityDisclosure, UsageAccessDisclosure } from "../AccessDisclosures";
 import {
   hasAccessibilityAccess,
+  getFullScreenStudInAlarmsEnabled,
+  hasExactAlarmAccess,
+  hasFullScreenAlarmAccess,
   hasOverlayPermission,
   hasUsageAccess,
   needsRestrictedSettingHelp,
+  requestExactAlarmAccess,
+  requestFullScreenAlarmAccess,
+  setFullScreenStudInAlarmsEnabled,
 } from "../blocking";
 import { Body, InfoSheet, Screen, Title } from "../components";
 import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
@@ -95,7 +103,13 @@ const aboutLinks: AboutLink[] = [
   },
 ];
 
-type AccessState = { usage: boolean; accessibility: boolean; overlay: boolean };
+type AccessState = {
+  usage: boolean;
+  accessibility: boolean;
+  overlay: boolean;
+  exactAlarm: boolean;
+  fullScreenAlarm: boolean;
+};
 
 export default function SettingsScreen({
   onManageCards,
@@ -117,9 +131,13 @@ export default function SettingsScreen({
     usage: false,
     accessibility: false,
     overlay: false,
+    exactAlarm: Platform.OS === "android" && Number(Platform.Version) < 31,
+    fullScreenAlarm: Platform.OS === "android" && Number(Platform.Version) < 34,
   });
   const [emergencyLeft, setEmergencyLeft] = useState<number | null>(null);
   const [focusMode, setFocusModeState] = useState<FocusMode>("tockin");
+  const [fullScreenAlarmOn, setFullScreenAlarmOn] = useState(false);
+  const enableFullScreenAfterGrant = useRef(false);
   // The row only has room for a summary, so the rest of the explanation lives
   // in a sheet the row opens.
   const [emergencyInfoOpen, setEmergencyInfoOpen] = useState(false);
@@ -129,6 +147,7 @@ export default function SettingsScreen({
   const [accessibilityDisclosureOpen, setAccessibilityDisclosureOpen] = useState(false);
   const [developerOpen, setDeveloperOpen] = useState(false);
   const [restrictedSettingHelp, setRestrictedSettingHelp] = useState(false);
+  const androidApi = Number(Platform.Version);
 
   useEffect(() => {
     getFocusMode().then(setFocusModeState);
@@ -138,17 +157,63 @@ export default function SettingsScreen({
     setFocusModeState(next);
     onModeChange?.(next);
     void setFocusMode(next);
+    if (
+      next === "studin" &&
+      Platform.OS === "android" &&
+      Number(Platform.Version) >= 31 &&
+      !access.exactAlarm
+    ) {
+      Alert.alert(
+        "Set up precise StudIn alarms?",
+        "Allow Alarms & reminders so Android can play the StudIn alarm on time while your phone is sleeping.",
+        [
+          { text: "Not now", style: "cancel" },
+          {
+            text: "Open settings",
+            onPress: () => void requestExactAlarmAccess().catch(() => Linking.openSettings()),
+          },
+        ]
+      );
+    }
   };
 
   const refresh = useCallback(async () => {
-    const [usage, accessibility, overlay, left] = await Promise.all([
+    const [
+      usage,
+      accessibility,
+      overlay,
+      exactAlarm,
+      fullScreenAlarm,
+      fullScreenEnabled,
+      left,
+    ] = await Promise.all([
       hasUsageAccess(),
       hasAccessibilityAccess(),
       hasOverlayPermission(),
+      hasExactAlarmAccess(),
+      hasFullScreenAlarmAccess(),
+      getFullScreenStudInAlarmsEnabled(),
       getEmergencyUnlocksLeft(),
     ]);
-    setAccess({ usage, accessibility, overlay });
+    setAccess({ usage, accessibility, overlay, exactAlarm, fullScreenAlarm });
+    setFullScreenAlarmOn(fullScreenAlarm && fullScreenEnabled);
     setEmergencyLeft(left);
+
+    // A revoked Android special access also turns the in-app option off, so
+    // the switch never promises a lock-screen launch the OS will refuse.
+    if (fullScreenEnabled && !fullScreenAlarm) {
+      await setFullScreenStudInAlarmsEnabled(false);
+    }
+
+    // Android 14 grants full-screen intent access on a system screen. If this
+    // return was initiated by the toggle, complete the opt-in automatically.
+    if (enableFullScreenAfterGrant.current) {
+      enableFullScreenAfterGrant.current = false;
+      if (fullScreenAlarm) {
+        setFullScreenAlarmOn(true);
+        await setFullScreenStudInAlarmsEnabled(true);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -172,12 +237,77 @@ export default function SettingsScreen({
     { value: "dark", label: "Dark", icon: Moon },
   ];
   const studInOn = focusMode === "studin";
+  const toggleFullScreenAlarm = () => {
+    if (fullScreenAlarmOn) {
+      setFullScreenAlarmOn(false);
+      void setFullScreenStudInAlarmsEnabled(false);
+      return;
+    }
+    if (access.fullScreenAlarm) {
+      setFullScreenAlarmOn(true);
+      void setFullScreenStudInAlarmsEnabled(true);
+      return;
+    }
+
+    Alert.alert(
+      "Allow full-screen alarms?",
+      "Android needs separate access before TockIn can appear above the lock screen. This never force-opens TockIn over another app while your phone is unlocked.",
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Open settings",
+          onPress: () => {
+            enableFullScreenAfterGrant.current = true;
+            void requestFullScreenAlarmAccess().catch(() => Linking.openSettings());
+          },
+        },
+      ]
+    );
+  };
+  const exactAlarmRow: {
+    title: string;
+    detail: string;
+    status: string;
+    icon: LucideIcon;
+    onPress: () => void;
+    disabled?: boolean;
+  } = {
+    title: "Alarms & reminders",
+    detail:
+      androidApi < 31
+        ? "This permission is not compatible with this Android version"
+        : "Precise StudIn alerts while your phone sleeps",
+    status:
+      androidApi < 31
+        ? "Unavailable"
+        : access.exactAlarm
+          ? "Allowed"
+          : "Set up",
+    icon: AlarmClock,
+    onPress: () => {
+      if (androidApi < 31 || access.exactAlarm) return;
+      Alert.alert(
+        "Allow precise StudIn alarms?",
+        "Without this access, Android may delay a timer alert while your phone is sleeping.",
+        [
+          { text: "Not now", style: "cancel" },
+          {
+            text: "Open settings",
+            onPress: () => void requestExactAlarmAccess().catch(() => Linking.openSettings()),
+          },
+        ]
+      );
+    },
+    disabled: androidApi < 31,
+  };
   const rows: {
     title: string;
     detail: string;
     status: string;
     icon: LucideIcon;
     onPress: () => void;
+    toggleValue?: boolean;
+    disabled?: boolean;
   }[] = [
     {
       title: "Usage access",
@@ -200,6 +330,17 @@ export default function SettingsScreen({
       icon: Layers,
       onPress: () => void Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION"),
     },
+    ...(Platform.OS === "android" && androidApi >= 31 ? [exactAlarmRow] : []),
+    {
+      title: "Lock-screen alarm",
+      detail: access.fullScreenAlarm
+        ? "Show TockIn when a StudIn timer ends while locked"
+        : "Android permission needed to show above the lock screen",
+      status: "",
+      icon: Bell,
+      onPress: toggleFullScreenAlarm,
+      toggleValue: fullScreenAlarmOn,
+    },
     {
       title: "TockIn cards",
       detail: "Add or remove your NFC keys",
@@ -214,6 +355,7 @@ export default function SettingsScreen({
       icon: Bell,
       onPress: () => void Linking.openSettings(),
     },
+    ...(Platform.OS === "android" && androidApi < 31 ? [exactAlarmRow] : []),
   ];
 
   return (
@@ -314,10 +456,19 @@ export default function SettingsScreen({
               <Pressable
                 key={row.title}
                 onPress={row.onPress}
+                disabled={row.disabled}
+                accessibilityRole={row.toggleValue === undefined ? "button" : "switch"}
+                accessibilityState={
+                  row.toggleValue === undefined
+                    ? row.disabled
+                      ? { disabled: true }
+                      : undefined
+                    : { checked: row.toggleValue }
+                }
                 style={({ pressed }) => [
                   styles.row,
                   index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                  { opacity: pressed ? 0.68 : 1 },
+                  { opacity: row.disabled ? 0.58 : pressed ? 0.68 : 1 },
                 ]}
               >
                 <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
@@ -327,10 +478,16 @@ export default function SettingsScreen({
                   <Text style={[styles.rowTitle, { color: colors.text }]}>{row.title}</Text>
                   <Text style={[styles.rowDetail, { color: colors.textDim }]}>{row.detail}</Text>
                 </View>
-                <Text style={[styles.rowStatus, { color: allowed ? colors.accent : colors.textDim }]}>
-                  {row.status}
-                </Text>
-                <ChevronRight size={17} color={colors.textDim} />
+                {row.toggleValue === undefined ? (
+                  <>
+                    <Text style={[styles.rowStatus, { color: allowed ? colors.accent : colors.textDim }]}>
+                      {row.status}
+                    </Text>
+                    {!row.disabled && <ChevronRight size={17} color={colors.textDim} />}
+                  </>
+                ) : (
+                  <ModeSwitch on={row.toggleValue} />
+                )}
               </Pressable>
             );
           })}

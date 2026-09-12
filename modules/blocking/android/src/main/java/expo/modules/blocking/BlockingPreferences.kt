@@ -33,6 +33,11 @@ internal object BlockingPreferences {
   private const val TOTAL_ROUNDS = "totalRounds"
   private const val PENDING_STUDIN_FOCUS_MS = "pendingStudInFocusMs"
   private const val PENDING_STUDIN_COMPLETED = "pendingStudInCompleted"
+  private const val LAST_OBSERVED_STUDIN_PHASE_STARTED_AT =
+    "lastObservedStudInPhaseStartedAt"
+  private const val PENDING_STUDIN_COMPLETION_ALERT =
+    "pendingStudInCompletionAlert"
+  private const val FULL_SCREEN_STUDIN_ALARMS = "fullScreenStudInAlarms"
 
   const val MODE_NONE = "none"
   const val MODE_TOCKIN = "tockin"
@@ -60,6 +65,8 @@ internal object BlockingPreferences {
       .putStringSet(BLOCKLIST, packages.toSet())
       .putString(SESSION_MODE, MODE_TOCKIN)
       .putLong(SESSION_STARTED_AT, System.currentTimeMillis())
+      .remove(LAST_OBSERVED_STUDIN_PHASE_STARTED_AT)
+      .remove(PENDING_STUDIN_COMPLETION_ALERT)
       .commit()
   }
 
@@ -80,6 +87,11 @@ internal object BlockingPreferences {
       .putLong(STUDY_DURATION_MS, studyDurationSeconds * 1000L)
       .putLong(BREAK_DURATION_MS, breakDurationSeconds * 1000L)
       .putInt(TOTAL_ROUNDS, rounds)
+      // The first Study begins because the user just started StudIn, so it is
+      // already observed and must not produce a misleading "timer finished"
+      // alarm. Every later phase has a newer start timestamp.
+      .putLong(LAST_OBSERVED_STUDIN_PHASE_STARTED_AT, now)
+      .remove(PENDING_STUDIN_COMPLETION_ALERT)
       .commit()
   }
 
@@ -98,6 +110,32 @@ internal object BlockingPreferences {
   fun shouldBlockNow(context: Context): Boolean {
     val state = sessionState(context)
     return state.active && (state.mode == MODE_TOCKIN || state.phase == PHASE_STUDY)
+  }
+
+  /**
+   * Atomically records a phase boundary. The foreground service calls this on
+   * every pass so a process/service restart cannot make the same transition
+   * alarm sound twice.
+   */
+  @Synchronized
+  fun acknowledgeStudInPhase(context: Context, state: BlockingSessionState): Boolean {
+    if (!state.active || state.mode != MODE_STUDIN || state.phase == null) return false
+    val preferences = prefs(context)
+    val observedAt = preferences.getLong(LAST_OBSERVED_STUDIN_PHASE_STARTED_AT, 0L)
+    if (state.phaseStartedAt <= observedAt) return false
+    preferences.edit()
+      .putLong(LAST_OBSERVED_STUDIN_PHASE_STARTED_AT, state.phaseStartedAt)
+      .commit()
+    return true
+  }
+
+  /** Returns true once for a naturally completed StudIn cycle. */
+  @Synchronized
+  fun consumeStudInCompletionAlert(context: Context): Boolean {
+    val preferences = prefs(context)
+    val pending = preferences.getBoolean(PENDING_STUDIN_COMPLETION_ALERT, false)
+    if (pending) preferences.edit().remove(PENDING_STUDIN_COMPLETION_ALERT).commit()
+    return pending
   }
 
   /**
@@ -190,6 +228,13 @@ internal object BlockingPreferences {
     prefs(context).edit().putString(APPEARANCE, mode).apply()
   }
 
+  fun fullScreenStudInAlarmsEnabled(context: Context): Boolean =
+    prefs(context).getBoolean(FULL_SCREEN_STUDIN_ALARMS, false)
+
+  fun setFullScreenStudInAlarmsEnabled(context: Context, enabled: Boolean) {
+    prefs(context).edit().putBoolean(FULL_SCREEN_STUDIN_ALARMS, enabled).apply()
+  }
+
   fun isDarkAppearance(context: Context): Boolean {
     return when (prefs(context).getString(APPEARANCE, "system")) {
       "dark" -> true
@@ -221,10 +266,16 @@ internal object BlockingPreferences {
     val preferences = prefs(context)
     val pendingFocus = preferences.getLong(PENDING_STUDIN_FOCUS_MS, 0L)
     val pendingCompleted = preferences.getBoolean(PENDING_STUDIN_COMPLETED, false)
+    val pendingCompletionAlert =
+      preferences.getBoolean(PENDING_STUDIN_COMPLETION_ALERT, false)
     preferences.edit()
       .putBoolean(ACTIVE, false)
       .putLong(PENDING_STUDIN_FOCUS_MS, pendingFocus + focusMillis.coerceAtLeast(0L))
       .putBoolean(PENDING_STUDIN_COMPLETED, pendingCompleted || completed)
+      .putBoolean(
+        PENDING_STUDIN_COMPLETION_ALERT,
+        pendingCompletionAlert || completed
+      )
       .commit()
   }
 

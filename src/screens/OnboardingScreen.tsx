@@ -66,7 +66,7 @@ const PERMS: {
   {
     key: "notifications",
     name: "Notifications",
-    why: "To keep your session running in the background.",
+    why: "To show the live StudIn timer and sound phase alarms in the background.",
   },
   {
     key: "nfc",

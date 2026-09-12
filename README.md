@@ -96,9 +96,13 @@ the card, but the card is still the only ordinary way out.
 Break, for as many rounds as configured. Defaults are 25 minutes of Study, 5 of
 Break, 4 rounds; the accepted ranges are 1 to 180, 1 to 60, and 1 to 12. Apps
 are blocked during Study and released during Break, and the transitions happen
-natively without waking JavaScript. The card does not end a Study interval. That
-is deliberate, it is stated before the cycle begins, and emergency unlock is the
-only way out mid-Study.
+natively without waking JavaScript. While the cycle is active, the foreground
+notification shows Android's live countdown. Android schedules each phase end
+as a wake-up alarm; the alert uses the bundled `src/assets/alarm.wav` sound and
+vibration. An optional lock-screen alarm brings TockIn above the keyguard, but
+is never requested while another app is visibly in use. The card does not end
+a Study interval. That is deliberate, it is stated before the cycle begins,
+and emergency unlock is the only way out mid-Study.
 
 ## Session lifecycle
 
@@ -164,7 +168,13 @@ See `RETIRED_KEYS` in `src/store.ts` and `BlockingPreferences.kt`.
 | Display over other apps (`SYSTEM_ALERT_WINDOW`) | Android special access screen | No shield can be drawn |
 | Accessibility service | Android accessibility settings | Blocked apps are caught by polling only, so noticeably slower |
 | `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_SPECIAL_USE` | Install time | Android kills the session as soon as the app leaves the screen |
-| `POST_NOTIFICATIONS` | Runtime prompt, Android 13+ | No ongoing session notification |
+| `POST_NOTIFICATIONS` | Runtime prompt, Android 13+ | No ongoing session countdown or StudIn timer alarms |
+| `SCHEDULE_EXACT_ALARM` | Alarms & reminders special access, Android 12+ | Sleeping-device alarms can be delayed; the foreground monitor remains as fallback |
+| `USE_FULL_SCREEN_INTENT` | Optional Settings toggle; special access on Android 14+ | Alarm still sounds, but TockIn will not appear above the lock screen |
+
+A Play release must complete the full-screen-intent declaration. TockIn requests
+that surface only for a user-started StudIn timer, only while the keyguard is
+showing, and keeps the ordinary alarm notification as its denial fallback.
 
 The accessibility service declares `isAccessibilityTool="false"` and
 `canRetrieveWindowContent="false"`, listens only for window-change events, and

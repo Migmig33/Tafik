@@ -52,12 +52,19 @@ class BlockingModule : Module() {
     // Null early in startup on some launches, and a leftover key is not worth
     // crashing over, so this is skipped rather than forced when it is.
     OnCreate {
-      appContext.reactContext?.let { BlockingPreferences.dropRetiredKeys(it) }
+      appContext.reactContext?.let { context ->
+        BlockingPreferences.dropRetiredKeys(context)
+        val state = BlockingPreferences.sessionState(context)
+        if (state.active && state.mode == BlockingPreferences.MODE_STUDIN) {
+          StudInAlarmScheduler.schedule(context, state)
+        }
+      }
     }
 
     AsyncFunction("startSession") { blocklist: List<String> ->
       val context = requireNotNull(appContext.reactContext)
       requireBlockingPermissions(context)
+      StudInAlarmScheduler.cancel(context)
       BlockingPreferences.start(context, blocklist)
       ContextCompat.startForegroundService(
         context,
@@ -88,6 +95,7 @@ class BlockingModule : Module() {
         breakDurationSeconds,
         rounds
       )
+      StudInAlarmScheduler.schedule(context, BlockingPreferences.sessionState(context))
       ContextCompat.startForegroundService(
         context,
         Intent(context, ForegroundBlockService::class.java)
@@ -97,6 +105,7 @@ class BlockingModule : Module() {
     AsyncFunction("endSession") {
       val context = requireNotNull(appContext.reactContext)
       BlockingPreferences.stop(context)
+      StudInAlarmScheduler.cancel(context)
       context.stopService(Intent(context, ForegroundBlockService::class.java))
     }
 
@@ -134,6 +143,35 @@ class BlockingModule : Module() {
         throw IllegalArgumentException("Appearance must be system, light, or dark.")
       }
       BlockingPreferences.setAppearanceMode(requireNotNull(appContext.reactContext), mode)
+    }
+
+    AsyncFunction("hasExactAlarmAccess") {
+      StudInAlarmScheduler.hasExactAlarmAccess(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("requestExactAlarmAccess") {
+      StudInAlarmScheduler.requestExactAlarmAccess(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("hasFullScreenAlarmAccess") {
+      StudInAlarmScheduler.hasFullScreenAlarmAccess(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("requestFullScreenAlarmAccess") {
+      StudInAlarmScheduler.requestFullScreenAlarmAccess(requireNotNull(appContext.reactContext))
+    }
+
+    AsyncFunction("getFullScreenStudInAlarmsEnabled") {
+      BlockingPreferences.fullScreenStudInAlarmsEnabled(
+        requireNotNull(appContext.reactContext)
+      )
+    }
+
+    AsyncFunction("setFullScreenStudInAlarmsEnabled") { enabled: Boolean ->
+      BlockingPreferences.setFullScreenStudInAlarmsEnabled(
+        requireNotNull(appContext.reactContext),
+        enabled
+      )
     }
 
     AsyncFunction("hasUsageAccess") {

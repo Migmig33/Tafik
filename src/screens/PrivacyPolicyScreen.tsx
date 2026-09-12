@@ -5,7 +5,7 @@ import { Screen, Title } from "../components";
 import { space, useTheme } from "../theme";
 import { Text } from "../typography";
 
-const EFFECTIVE_DATE = "September 6, 2026";
+const EFFECTIVE_DATE = "September 12, 2026";
 
 type PolicySectionProps = {
   number: string;
@@ -128,10 +128,11 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
           </Bullet>
 
           <Bullet title="Permission and service status">
-            TockIn checks whether Usage Access, Accessibility, display over other apps, NFC, and
-            notifications are switched on, so it can guide you through setup and run what you asked
-            for. It keeps no history of those changes. While a session is running, TockIn shows an
-            ongoing notification, which is what lets blocking keep working in the background.
+            TockIn checks whether Usage Access, Accessibility, display over other apps, NFC,
+            notifications, Alarms & reminders, and full-screen alarm access are switched on, so it
+            can guide you through setup and run what you asked for. It keeps no history of those
+            changes. While a session is running, TockIn shows an ongoing notification, which is what
+            lets blocking keep working in the background.
           </Bullet>
         </PolicySection>
 
@@ -159,12 +160,21 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
             Blocklist and in Insights, and recognise them while blocking.
           </Bullet>
           <Bullet title="Notifications">
-            Shows the ongoing session notification. Android requires it for blocking to keep running in
-            the background.
+            Shows the ongoing session notification and StudIn countdown. Android requires it for
+            blocking to keep running in the background, and it can sound and vibrate when a Study,
+            Break, or full cycle ends.
+          </Bullet>
+          <Bullet title="Alarms & reminders">
+            Lets Android deliver a StudIn timer alert on time while the phone is sleeping. Without
+            it, Android may delay the alert.
+          </Bullet>
+          <Bullet title="Full-screen alarms">
+            Optionally shows TockIn above the lock screen when a StudIn timer ends. It is not used to
+            interrupt another app while the phone is unlocked.
           </Bullet>
           <Bullet title="Audio">
-            Plays the sound built into TockIn. TockIn does not ask for the microphone and does not record
-            anything.
+            Plays the sounds built into TockIn, including its StudIn alarm. TockIn does not ask for
+            the microphone and does not record anything.
           </Bullet>
           <Bullet title="Storage">
             On Android 12 and earlier, apps built this way list a storage permission by default. TockIn
@@ -219,8 +229,10 @@ export default function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) 
 
         <PolicySection number="6" title="Your choices and controls">
           <Bullet title="Permissions">
-            Turn Usage Access, Accessibility, display over other apps, NFC, and notifications on or off
-            in Android Settings. Anything that needs a permission you removed will stop working.
+            Turn Usage Access, Accessibility, display over other apps, NFC, notifications, Alarms &
+            reminders, and full-screen alarms on or off in TockIn or Android Settings. Anything that
+            needs a permission you removed will stop working. Full-screen alarms are optional and are
+            used only when a StudIn timer ends while the phone is locked.
           </Bullet>
           <Bullet title="Cards and blocklist">
             Remove registered cards in TockIn’s card manager, and add or remove apps in the Blocklist.

@@ -32,6 +32,12 @@ type BlockingNativeModule = {
   getSessionState?(): Promise<BlockingSessionState>;
   consumeStudInResult?(): Promise<StudInResult>;
   setAppearanceMode?(mode: "system" | "light" | "dark"): Promise<void>;
+  hasExactAlarmAccess?(): Promise<boolean>;
+  requestExactAlarmAccess?(): Promise<void>;
+  hasFullScreenAlarmAccess?(): Promise<boolean>;
+  requestFullScreenAlarmAccess?(): Promise<void>;
+  getFullScreenStudInAlarmsEnabled?(): Promise<boolean>;
+  setFullScreenStudInAlarmsEnabled?(enabled: boolean): Promise<void>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
@@ -137,6 +143,32 @@ export async function consumeStudInResult(): Promise<StudInResult> {
 
 export async function syncBlockingAppearance(mode: "system" | "light" | "dark"): Promise<void> {
   await native?.setAppearanceMode?.(mode);
+}
+
+export async function hasExactAlarmAccess(): Promise<boolean> {
+  return native?.hasExactAlarmAccess ? native.hasExactAlarmAccess() : false;
+}
+
+export async function requestExactAlarmAccess(): Promise<void> {
+  await native?.requestExactAlarmAccess?.();
+}
+
+export async function hasFullScreenAlarmAccess(): Promise<boolean> {
+  return native?.hasFullScreenAlarmAccess ? native.hasFullScreenAlarmAccess() : false;
+}
+
+export async function requestFullScreenAlarmAccess(): Promise<void> {
+  await native?.requestFullScreenAlarmAccess?.();
+}
+
+export async function getFullScreenStudInAlarmsEnabled(): Promise<boolean> {
+  return native?.getFullScreenStudInAlarmsEnabled
+    ? native.getFullScreenStudInAlarmsEnabled()
+    : false;
+}
+
+export async function setFullScreenStudInAlarmsEnabled(enabled: boolean): Promise<void> {
+  await native?.setFullScreenStudInAlarmsEnabled?.(enabled);
 }
 
 export async function hasUsageAccess(): Promise<boolean> {
