@@ -1,7 +1,7 @@
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Body, PrimaryButton, Screen, Title } from "./components";
-import { radius, space, useTheme } from "./theme";
+import { radius, space, colors, typeScale } from "./theme";
 import { Text } from "./typography";
 
 /**
@@ -47,14 +47,13 @@ export default class ErrorBoundary extends React.Component<
 }
 
 function Fallback({ details, onRetry }: { details: string; onRetry: () => void }) {
-  const { colors } = useTheme();
   return (
     <Screen>
       <View style={{ flex: 1, justifyContent: "center" }}>
         <Title>Something went wrong</Title>
         <View style={{ height: space(1.5) }} />
         <Body dim>
-          TockIn hit an unexpected error. If a focus session was running it is still
+          Tafik hit an unexpected error. If a focus session was running it is still
           running. Your apps are still locked, and your card will still end it.
         </Body>
 
@@ -83,7 +82,7 @@ function Fallback({ details, onRetry }: { details: string; onRetry: () => void }
 
 const styles = StyleSheet.create({
   label: {
-    fontSize: 11,
+    fontSize: typeScale.label.fontSize,
     fontWeight: "600",
     letterSpacing: 0.8,
     marginBottom: space(1),
@@ -94,7 +93,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.input,
   },
   detailText: {
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
     lineHeight: 18,
   },
 });

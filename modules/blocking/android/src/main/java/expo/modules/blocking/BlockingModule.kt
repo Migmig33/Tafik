@@ -65,7 +65,7 @@ class BlockingModule : Module() {
       )
     }
 
-    AsyncFunction("startStudInSession") {
+    AsyncFunction("startCycleSession") {
         blocklist: List<String>,
         studyDurationSeconds: Int,
         breakDurationSeconds: Int,
@@ -79,9 +79,9 @@ class BlockingModule : Module() {
       require(breakDurationSeconds in 60..(60 * 60)) {
         "Break duration must be between 1 and 60 minutes."
       }
-      require(rounds in 1..12) { "StudIn rounds must be between 1 and 12." }
+      require(rounds in 1..12) { "Cycle rounds must be between 1 and 12." }
 
-      BlockingPreferences.startStudIn(
+      BlockingPreferences.startCycle(
         context,
         blocklist,
         studyDurationSeconds,
@@ -121,19 +121,12 @@ class BlockingModule : Module() {
       )
     }
 
-    AsyncFunction("consumeStudInResult") {
-      val result = BlockingPreferences.consumeStudInResult(requireNotNull(appContext.reactContext))
+    AsyncFunction("consumeCycleResult") {
+      val result = BlockingPreferences.consumeCycleResult(requireNotNull(appContext.reactContext))
       mapOf(
         "focusSeconds" to result.focusSeconds.toDouble(),
         "completed" to result.completed
       )
-    }
-
-    AsyncFunction("setAppearanceMode") { mode: String ->
-      if (mode !in setOf("system", "light", "dark")) {
-        throw IllegalArgumentException("Appearance must be system, light, or dark.")
-      }
-      BlockingPreferences.setAppearanceMode(requireNotNull(appContext.reactContext), mode)
     }
 
     AsyncFunction("hasUsageAccess") {

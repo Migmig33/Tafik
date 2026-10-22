@@ -13,7 +13,7 @@
 
 # Add any project specific keep options here:
 
-# --- TockIn ---------------------------------------------------------------
+# --- Tafik ---------------------------------------------------------------
 # R8 is on for release builds (android.enableMinifyInReleaseBuilds). Every keep
 # below covers something resolved by NAME at runtime rather than by a compiled
 # reference, which is exactly what R8 cannot see and would otherwise strip or
@@ -30,7 +30,7 @@
 -keep class expo.modules.blocking.** { *; }
 
 # MainActivity and MainApplication are named in AndroidManifest.
--keep class com.kupdevs.tockin.** { *; }
+-keep class com.kupdevs.tafik.** { *; }
 
 # NFC: reached reflectively by React Native's module registry, and the tag
 # classes are instantiated by the Android framework.

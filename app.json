@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "TockIn",
-    "slug": "tockin",
-    "scheme": "tockin",
+    "name": "Tafik",
+    "slug": "tafik",
+    "scheme": "tafik",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./src/assets/icon.png",
     "android": {
-      "package": "com.kupdevs.tockin",
+      "package": "com.kupdevs.tafik",
       "permissions": [
         "android.permission.NFC",
         "android.permission.PACKAGE_USAGE_STATS",
@@ -27,7 +27,7 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "TockIn uses your card to start and end a focus session."
+          "nfcPermission": "Tafik uses your card to start and end a focus session."
         }
       ],
       "expo-font",
@@ -40,12 +40,13 @@
       ],
       "expo-asset",
       "expo-build-properties",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-sharing"
     ],
     "owner": "tantansahur",
     "extra": {
       "eas": {
-        "projectId": "39abf5ab-9feb-4698-90d2-eaef856cf11b"
+        "projectId": "2869bbfe-6280-49c4-803a-981632eef4df"
       }
     }
   }

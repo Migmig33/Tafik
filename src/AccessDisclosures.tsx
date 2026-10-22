@@ -3,7 +3,7 @@ import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combine
 import type { LucideIcon } from "lucide-react-native";
 import { Modal, ScrollView, StyleSheet, View } from "react-native";
 import { GhostButton, PrimaryButton } from "./components";
-import { radius, space, useTheme } from "./theme";
+import { radius, space, colors, typeScale } from "./theme";
 import { Text } from "./typography";
 
 type DisclosureControls = {
@@ -37,13 +37,13 @@ export function AccessibilityDisclosure(
       icon={Accessibility}
       eyebrow="ACCESSIBILITY DISCLOSURE"
       title="App blocking needs Accessibility"
-      intro="TockIn uses Android Accessibility only to enforce the blocklist during focus sessions."
+      intro="Tafik uses Android Accessibility only to enforce the blocklist during focus sessions."
       items={[
-        "TockIn reads the package name of the app currently appearing on your screen.",
-        "TockIn uses that package name only during an active focus session, including StudIn Study intervals.",
-        "If it matches an app you selected to block, TockIn immediately returns your device to Home.",
-        "TockIn does not read text, passwords, taps, or any screen content.",
-        "This package-name information stays on your phone. TockIn does not upload or share it.",
+        "Tafik reads the package name of the app currently appearing on your screen.",
+        "Tafik uses that package name only during an active focus session, including Cycle Study intervals.",
+        "If it matches an app you selected to block, Tafik immediately returns your device to Home.",
+        "Tafik does not read text, passwords, taps, or any screen content.",
+        "This package-name information stays on your phone. Tafik does not upload or share it.",
       ]}
       note="You can choose Not now. Immediate blocked-app redirection will remain unavailable until you enable Accessibility."
     />
@@ -57,12 +57,12 @@ export function UsageAccessDisclosure(controls: DisclosureControls) {
       icon={ChartNoAxesCombined}
       eyebrow="USAGE ACCESS DISCLOSURE"
       title="Blocking and Insights need Usage Access"
-      intro="TockIn uses Android Usage Access for app blocking and on-device screen-time Insights."
+      intro="Tafik uses Android Usage Access for app blocking and on-device screen-time Insights."
       items={[
-        "TockIn reads foreground-app activity, including which app was used and for how long.",
-        "During focus sessions, TockIn uses this activity to detect selected blocked apps and show the blocking shield.",
+        "Tafik reads foreground-app activity, including which app was used and for how long.",
+        "During focus sessions, Tafik uses this activity to detect selected blocked apps and show the blocking shield.",
         "Insights processes recent activity on your device to calculate screen-time totals, app usage, charts, and trends.",
-        "Your foreground-app activity and screen-time information stay on your phone. TockIn does not upload or share them.",
+        "Your foreground-app activity and screen-time information stay on your phone. Tafik does not upload or share them.",
       ]}
       note="You can choose Not now. App detection and device screen-time Insights will remain unavailable until you enable Usage Access."
     />
@@ -81,7 +81,6 @@ function AccessDisclosure({
   note,
   restrictedSettingHelp = false,
 }: AccessDisclosureProps) {
-  const { colors } = useTheme();
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onDecline}>
@@ -117,8 +116,8 @@ function AccessDisclosure({
                 If Android says this setting is unavailable
               </Text>
               <Text style={[styles.helpBody, { color: colors.textDim }]}>
-                Open Settings, then Apps, then TockIn. Tap the three dot menu at the top right
-                and choose Allow restricted settings. Android asks for this because TockIn was
+                Open Settings, then Apps, then Tafik. Tap the three dot menu at the top right
+                and choose Allow restricted settings. Android asks for this because Tafik was
                 installed from a file rather than the Play Store.
               </Text>
             </View>
@@ -137,7 +136,6 @@ function AccessDisclosure({
 }
 
 function DisclosureItem({ children, last = false }: { children: string; last?: boolean }) {
-  const { colors } = useTheme();
 
   return (
     <View
@@ -171,19 +169,19 @@ const styles = StyleSheet.create({
     marginBottom: space(3),
   },
   eyebrow: {
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 1.1,
     marginBottom: space(1),
   },
   title: {
-    fontSize: 28,
+    fontSize: typeScale.title.fontSize,
     lineHeight: 34,
     fontWeight: "700",
     letterSpacing: -0.5,
   },
   intro: {
-    fontSize: 15,
+    fontSize: typeScale.callout.fontSize,
     lineHeight: 22,
     marginTop: space(1.5),
   },
@@ -207,11 +205,11 @@ const styles = StyleSheet.create({
   },
   itemText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typeScale.callout.fontSize,
     lineHeight: 21,
   },
   note: {
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     lineHeight: 19,
     marginTop: space(2),
   },
@@ -222,12 +220,12 @@ const styles = StyleSheet.create({
     padding: space(2),
   },
   helpTitle: {
-    fontSize: 14,
+    fontSize: typeScale.callout.fontSize,
     fontWeight: "700",
     marginBottom: space(0.75),
   },
   helpBody: {
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     lineHeight: 19,
   },
   actions: {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -11,7 +11,12 @@ import {
 } from "react-native";
 import type { DimensionValue } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { radius, space, useTheme } from "./theme";
+import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
+import LockKeyholeOpen from "lucide-react-native/icons/lock-keyhole-open";
+import { colors, radius, SCREEN_GUTTER, space, typeScale } from "./theme";
+import { MOTION, PressableScale, useReducedMotion } from "./motion";
+import { TabBarBelowContext } from "./tabBar";
+import type { StreakDay } from "./store";
 import { Text } from "./typography";
 
 // The glyph's share of the square artwork. The asset carries a large safe-zone
@@ -118,15 +123,17 @@ export function Screen({
   children: React.ReactNode;
   tinted?: boolean;
 }) {
-  const { colors } = useTheme();
+  const tabBarBelow = useContext(TabBarBelowContext);
   return (
     <View
       style={{
         flex: 1,
         backgroundColor: tinted ? colors.accentWash : colors.bg,
-        paddingHorizontal: space(2.5),
+        paddingHorizontal: SCREEN_GUTTER,
         paddingTop: space(7),
-        paddingBottom: space(3),
+        // On tab screens the bar floats over the bottom, so the content runs
+        // down to it and the scroll clearance keeps the last item clear.
+        paddingBottom: tabBarBelow ? 0 : space(3),
       }}
     >
       {children}
@@ -134,16 +141,11 @@ export function Screen({
   );
 }
 
-export function Title({ children }: { children: React.ReactNode }) {
-  const { colors } = useTheme();
+/** Bold is opt-in: onboarding headings use it, and the other screens keep semibold. */
+export function Title({ children, bold }: { children: React.ReactNode; bold?: boolean }) {
   return (
     <Text
-      style={{
-        color: colors.text,
-        fontSize: 26,
-        fontWeight: "600",
-        letterSpacing: -0.4,
-      }}
+      style={{ color: colors.text, ...typeScale.title, fontWeight: bold ? "700" : "600" }}
     >
       {children}
     </Text>
@@ -157,9 +159,8 @@ export function Body({
   children: React.ReactNode;
   dim?: boolean;
 }) {
-  const { colors } = useTheme();
   return (
-    <Text style={{ color: dim ? colors.textDim : colors.text, fontSize: 15, lineHeight: 22 }}>
+    <Text style={{ color: dim ? colors.textDim : colors.text, ...typeScale.body }}>
       {children}
     </Text>
   );
@@ -174,9 +175,8 @@ export function PrimaryButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  const { colors } = useTheme();
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
@@ -192,31 +192,30 @@ export function PrimaryButton({
       <Text
         style={{
           color: disabled ? colors.textDim : colors.onAccent,
-          fontSize: 16,
+          ...typeScale.body,
           fontWeight: "600",
         }}
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
 export function GhostButton({ label, onPress }: { label: string; onPress: () => void }) {
-  const { colors } = useTheme();
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.97}
       accessibilityRole="button"
       onPress={onPress}
       style={{ paddingVertical: space(1.5), alignItems: "center" }}
     >
-      <Text style={{ color: colors.textDim, fontSize: 15, fontWeight: "500" }}>{label}</Text>
-    </Pressable>
+      <Text style={{ color: colors.textDim, ...typeScale.callout, fontWeight: "500" }}>{label}</Text>
+    </PressableScale>
   );
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
-  const { colors } = useTheme();
   return (
     <View
       style={[
@@ -259,7 +258,6 @@ export function InfoSheet({
   /** Extra content between the body and the Close button. */
   children?: React.ReactNode;
 }) {
-  const { colors } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -315,13 +313,51 @@ export function TapRipple({
   /** Optional mark drawn inside the outlined centre circle. */
   children?: React.ReactNode;
 }) {
-  const { colors } = useTheme();
+  const reduce = useReducedMotion();
+  // Ring phase, ring presence and the core's swell are separate values, so each
+  // can change on its own without restarting the others.
   const a = useRef(new Animated.Value(0)).current;
+  const presence = useRef(new Animated.Value(0)).current;
+  const core = useRef(new Animated.Value(1)).current;
+  const [looping, setLooping] = useState(false);
 
+  // The rings fade in when a read opens and fade out when it closes. A change
+  // mid-fade reverses from where it is, because the previous animation is
+  // stopped before the next one starts.
   useEffect(() => {
-    if (!active) {
-      // Park the rings at the start so re-arming always pulses from zero.
+    if (active) {
+      setLooping(true);
+      const show = Animated.timing(presence, {
+        toValue: 1,
+        duration: MOTION.fade,
+        easing: MOTION.ease,
+        useNativeDriver: true,
+      });
+      show.start();
+      return () => show.stop();
+    }
+    const hide = Animated.timing(presence, {
+      toValue: 0,
+      duration: 180,
+      easing: MOTION.ease,
+      useNativeDriver: true,
+    });
+    hide.start(({ finished }) => {
+      if (finished) setLooping(false);
+    });
+    return () => hide.stop();
+  }, [active, presence]);
+
+  // Only one loop can exist. It starts when the rings come on and stops once
+  // they have gone, and its cleanup runs before any restart.
+  useEffect(() => {
+    if (!looping) {
       a.setValue(0);
+      return;
+    }
+    if (reduce) {
+      // Reduced motion keeps the rings visible but holds them still.
+      a.setValue(0.5);
       return;
     }
     const loop = Animated.loop(
@@ -334,13 +370,33 @@ export function TapRipple({
     );
     loop.start();
     return () => loop.stop();
-  }, [a, active]);
+  }, [a, looping, reduce]);
+
+  // The centre circle swells a little while a read is open, so the mark seems
+  // to be listening. It settles back as soon as the read ends.
+  useEffect(() => {
+    if (reduce) {
+      core.setValue(active ? 1.04 : 1);
+      return;
+    }
+    const swell = Animated.timing(core, {
+      toValue: active ? 1.04 : 1,
+      duration: 260,
+      easing: MOTION.ease,
+      useNativeDriver: true,
+    });
+    swell.start();
+    return () => swell.stop();
+  }, [active, core, reduce]);
 
   const ring = (delay: number) => {
     const p = Animated.modulo(Animated.add(a, delay), 1);
     return {
       transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.9] }) }],
-      opacity: p.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.5, 0] }),
+      opacity: Animated.multiply(
+        presence,
+        p.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.5, 0] })
+      ),
     };
   };
 
@@ -348,13 +404,9 @@ export function TapRipple({
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      {active && (
-        <>
-          <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0)]} />
-          <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0.5)]} />
-        </>
-      )}
-      <View
+      <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0)]} />
+      <Animated.View style={[styles.ring, ringSize, { borderColor: colors.accent }, ring(0.5)]} />
+      <Animated.View
         style={{
           width: coreSize,
           height: coreSize,
@@ -363,10 +415,11 @@ export function TapRipple({
           borderColor: colors.accent,
           alignItems: "center",
           justifyContent: "center",
+          transform: [{ scale: core }],
         }}
       >
         {children}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -395,11 +448,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sheetTitle: {
-    fontSize: 18,
+    fontSize: typeScale.headline.fontSize,
     fontWeight: "600",
   },
   sheetBody: {
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     lineHeight: 20,
     textAlign: "center",
   },
@@ -413,13 +466,13 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   brandTitle: {
-    fontSize: 30,
-    fontWeight: "600",
+    fontSize: typeScale.title.fontSize,
+    fontWeight: "700",
     letterSpacing: -0.6,
   },
   brandTagline: {
     marginTop: space(0.75),
-    fontSize: 15,
+    fontSize: typeScale.callout.fontSize,
     letterSpacing: 0.2,
   },
   ring: {
@@ -446,7 +499,6 @@ export function HoldButton({
   onComplete: () => void;
   disabled?: boolean;
 }) {
-  const { colors } = useTheme();
   const progress = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [holding, setHolding] = useState(false);
@@ -537,7 +589,7 @@ export function HoldButton({
       <Text
         style={{
           color: disabled ? colors.textDim : colors.accent,
-          fontSize: 16,
+          fontSize: typeScale.body.fontSize,
           fontWeight: "600",
           fontVariant: ["tabular-nums"],
         }}
@@ -554,18 +606,20 @@ export function HoldButton({
  * and the ordinary launch intro so the two can never drift apart. `onDone`
  * fires once the whole sequence has settled.
  */
+/** How long the launch lockup runs. The mark and copy are timed against this. */
+export const LOCKUP_MS = 600;
+
 export function BrandLockup({
   durationMs,
   onDone,
   showTagline = true,
 }: {
-  /** Total length of the whole lockup, matched to the whoosh clip. */
+  /** Total length of the whole lockup. */
   durationMs: number;
   onDone?: () => void;
   /** Keep shared launch lockups unchanged while allowing tighter compositions. */
   showTagline?: boolean;
 }) {
-  const { colors } = useTheme();
   const mark = useRef(new Animated.Value(0)).current;
   const copy = useRef(new Animated.Value(0)).current;
   // Held in a ref so a caller re-rendering with a new callback can't restart
@@ -578,7 +632,7 @@ export function BrandLockup({
 
   useEffect(() => {
     // The measured mark reveal fills the clip while the copy joins during its
-    // final 40%. Both start from the same mount that requests the whoosh.
+    // final 40%. Both start from the same mount.
     const animation = Animated.parallel([
       Animated.timing(mark, {
         toValue: 1,
@@ -622,7 +676,7 @@ export function BrandLockup({
           ],
         }}
       >
-        <Text style={[styles.brandTitle, { color: colors.text }]}>TockIn</Text>
+        <Text style={[styles.brandTitle, { color: colors.text }]}>Tafik</Text>
         {showTagline ? (
           <Text style={[styles.brandTagline, { color: colors.textDim }]}>Tap in. Stay locked in.</Text>
         ) : null}
@@ -766,7 +820,6 @@ export function Skeleton({
   borderRadius?: number;
   style?: ViewStyle;
 }) {
-  const { colors } = useTheme();
   const pulse = useSkeletonPulse();
   return (
     <Animated.View
@@ -785,3 +838,76 @@ export function Skeleton({
     />
   );
 }
+
+/**
+ * The current calendar week, Sunday on the left. A white padlock on black means
+ * the day earned the streak; an open padlock on a hairline means it did not.
+ * Today is ringed in white so it is findable before its session is done.
+ */
+export function StreakWeek({ days }: { days: StreakDay[] }) {
+  return (
+    <View style={[streakStyles.week, { backgroundColor: colors.surface }]}>
+      {days.map((day) => {
+        const Icon = day.earned ? LockKeyhole : LockKeyholeOpen;
+        const state = day.earned ? "streak day" : day.isFuture ? "upcoming" : "no streak";
+        return (
+          <View
+            key={day.key}
+            accessible
+            accessibilityLabel={`${day.label}, ${state}${day.isToday ? ", today" : ""}`}
+            style={[streakStyles.day, { opacity: day.isFuture ? 0.5 : 1 }]}
+          >
+            <Text
+              style={[
+                streakStyles.label,
+                { color: day.isToday ? colors.text : colors.textDim, fontWeight: day.isToday ? "600" : "400" },
+              ]}
+            >
+              {day.label}
+            </Text>
+            <View
+              style={[
+                streakStyles.lock,
+                day.earned
+                  ? { backgroundColor: colors.bg }
+                  : { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+                day.isToday && { borderWidth: 1, borderColor: colors.text },
+              ]}
+            >
+              <Icon
+                size={18}
+                color={day.earned ? colors.text : colors.textDim}
+                strokeWidth={2}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const streakStyles = StyleSheet.create({
+  week: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderRadius: radius.card,
+    paddingHorizontal: space(1.5),
+    paddingVertical: space(2),
+  },
+  day: {
+    flex: 1,
+    alignItems: "center",
+    gap: space(1),
+  },
+  label: {
+    ...typeScale.footnote,
+  },
+  lock: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

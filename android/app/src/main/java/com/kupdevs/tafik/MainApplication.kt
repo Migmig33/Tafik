@@ -1,4 +1,4 @@
-package com.kupdevs.tockin
+package com.kupdevs.tafik
 
 import android.app.Application
 import android.content.res.Configuration

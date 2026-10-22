@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Svg, { Circle, Line, Path, Polyline } from "react-native-svg";
 import CalendarDays from "lucide-react-native/icons/calendar-days";
-import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Hourglass from "lucide-react-native/icons/hourglass";
@@ -15,9 +14,11 @@ import type { LucideIcon } from "lucide-react-native";
 import { UsageAccessDisclosure } from "../AccessDisclosures";
 import { AppScreenTime, getInstalledApps, getScreenTimeInsights, ScreenTimeDay } from "../blocking";
 import { Screen, Skeleton, Title } from "../components";
-import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
+import { GuideSheet, useScreenGuide } from "../guides";
 import { getSessions, SessionRecord, todayKey } from "../store";
-import { space, useTheme } from "../theme";
+import { space, colors, typeScale } from "../theme";
+import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
+import { NAV_CLEARANCE } from "../tabBar";
 import { Text } from "../typography";
 
 type Period = "today" | "yesterday" | "week";
@@ -29,7 +30,7 @@ type Series = "focus" | "screen";
 type TrendPoint = { date: string; seconds: number };
 
 const SERIES_OPTIONS: { value: Series; label: string }[] = [
-  { value: "focus", label: "TockedIn" },
+  { value: "focus", label: "Tafik" },
   { value: "screen", label: "Screen time" },
 ];
 
@@ -38,7 +39,7 @@ const WEEK = 7;
 const APP_PREVIEW_COUNT = 4;
 
 /**
- * Complete days needed before TockIn will claim a saving. Two days is a mood;
+ * Complete days needed before Tafik will claim a saving. Two days is a mood;
  * three is the least that can pass for a habit, and the card says so rather
  * than quietly showing a number built on one day.
  */
@@ -63,7 +64,7 @@ type Saving = {
 };
 
 /** Average screen time on the days a focus session ran, against the rest. */
-type TockInEffect = { tapped: number; rest: number };
+type TafikEffect = { tapped: number; rest: number };
 
 function duration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -145,7 +146,7 @@ function dayKeyBefore(daysBack: number, now = new Date()): string {
 }
 
 export default function InsightsScreen() {
-  const { colors } = useTheme();
+  const edge = useScrollEdge();
   const guide = useScreenGuide("insights");
   const [period, setPeriod] = useState<Period>("today");
   const [showAllApps, setShowAllApps] = useState(false);
@@ -228,7 +229,7 @@ export default function InsightsScreen() {
 
   /**
    * The selected period against the user's own usual day. The baseline is
-   * always "every other complete day TockIn has recorded", which is one rule
+   * always "every other complete day Tafik has recorded", which is one rule
    * that holds for all three periods and degrades gracefully when the native
    * module only returns seven days instead of fourteen.
    */
@@ -278,7 +279,7 @@ export default function InsightsScreen() {
    * day? Answered by splitting the recorded days on whether a session ran,
    * which needs no baseline and cannot be skewed by a partial today.
    */
-  const tockInEffect = useMemo<TockInEffect | null>(() => {
+  const tafikEffect = useMemo<TafikEffect | null>(() => {
     if (!days?.length || !sessions) return null;
     const ran = new Set(sessions.filter((session) => session.s > 0).map((session) => session.d));
     const complete = completedDays(days);
@@ -293,148 +294,148 @@ export default function InsightsScreen() {
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: space(2) }}>
-        <View style={styles.header}>
-          <View>
-            <Title>Insights</Title>
-            <Text style={{ color: colors.textDim, fontSize: 14, marginTop: 4 }}>
-              Understand where your time goes.
-            </Text>
-          </View>
-          <View style={styles.headerActions}>
-            <GuideButton label="Insights" onPress={guide.open} />
-            <ChartNoAxesCombined size={25} color={colors.accent} strokeWidth={2.2} />
-          </View>
-        </View>
-
-        <View style={[styles.segment, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {(["today", "yesterday", "week"] as const).map((item) => {
-            const selected = period === item;
-            return (
-              <Pressable
-                key={item}
-                onPress={() => setPeriod(item)}
-                style={[
-                  styles.segmentButton,
-                  { backgroundColor: selected ? colors.accentWash : "transparent" },
-                ]}
-              >
-                <Text style={{ color: selected ? colors.accent : colors.textDim, fontWeight: "600", fontSize: 13 }}>
-                  {item === "week" ? "7 days" : item[0].toUpperCase() + item.slice(1)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* TockIn's own numbers lead, then the week's shape, and the screen-time
-            card closes with what that shape adds up to. */}
-        <FocusSummaryCard
-          label={periodLabel}
-          seconds={focusSummary?.seconds}
-          sessions={focusSummary?.count}
-        />
-
-        {period === "week" && sessions !== undefined ? (
-          <WeekTrendChart
-            focus={focusWeekDays}
-            screen={days}
-            onRequestScreenTime={() => setUsageDisclosureOpen(true)}
-          />
-        ) : null}
-
-        {error ? (
-          <View style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Screen time unavailable</Text>
-            <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{error}</Text>
-          </View>
-        ) : days === undefined ? (
-          <ScreenTimeCardSkeleton />
-        ) : days === null ? (
-          <Pressable
-            onPress={() => setUsageDisclosureOpen(true)}
-            style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Usage Access required</Text>
-            <Text style={{ color: colors.textDim, fontSize: 13, marginTop: 5 }}>Tap to open Android settings.</Text>
-          </Pressable>
-        ) : (
-          <ScreenTimeCard
-            periodLabel={periodLabel}
-            total={summary.seconds}
-            saving={saving}
-            label={
-              period === "today"
-                ? "Today so far"
-                : period === "yesterday"
-                  ? "Yesterday"
-                  : "Last 7 days"
-            }
-            perDay={period === "week"}
-            effect={tockInEffect}
-          />
-        )}
-
-        {days ? (
-          <>
-            <View style={styles.listHeader}>
-              <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>App usage</Text>
-              <Text style={{ color: colors.textDim, fontSize: 13 }}>{summary.apps.length} apps</Text>
+      <View style={{ flex: 1 }}>
+        <ScrollView {...edge.scrollProps} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: space(2) }}>
+          <View style={styles.header}>
+            <View>
+              <Title>Insights</Title>
+              <Text style={{ color: colors.textDim, fontSize: typeScale.callout.fontSize, marginTop: 4 }}>
+                Understand where your time goes.
+              </Text>
             </View>
-            <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              {summary.apps.length === 0 ? (
-                <Text style={{ color: colors.textDim, fontSize: 14, padding: space(2) }}>
-                  No app activity of at least one minute.
-                </Text>
-              ) : (
-                visibleApps.map((app, index) => (
-                  <View
-                    key={app.pkg}
-                    style={[
-                      styles.appRow,
-                      index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                    ]}
-                  >
-                    <AppIcon name={app.name} uri={icons[app.pkg]} />
-                    <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: 15 }}>
-                      {app.name}
-                    </Text>
-                    <Text style={{ color: colors.textDim, fontSize: 14, fontVariant: ["tabular-nums"] }}>
-                      {duration(app.seconds)}
-                    </Text>
-                  </View>
-                ))
-              )}
-              {summary.apps.length > APP_PREVIEW_COUNT ? (
+          </View>
+
+          <View style={[styles.segment, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {(["today", "yesterday", "week"] as const).map((item) => {
+              const selected = period === item;
+              return (
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: showAllApps }}
-                  accessibilityLabel={showAllApps ? "Show fewer apps" : "View all app usage"}
-                  onPress={() => setShowAllApps((current) => !current)}
-                  style={({ pressed }) => [
-                    styles.viewAllRow,
-                    {
-                      borderColor: colors.border,
-                      backgroundColor: pressed ? colors.accentWash : colors.surface,
-                    },
+                  key={item}
+                  onPress={() => setPeriod(item)}
+                  style={[
+                    styles.segmentButton,
+                    { backgroundColor: selected ? colors.accentWash : "transparent" },
                   ]}
                 >
-                  <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
-                    {showAllApps ? "Show less" : `View all ${summary.apps.length} apps`}
+                  <Text style={{ color: selected ? colors.accent : colors.textDim, fontWeight: "600", fontSize: typeScale.footnote.fontSize }}>
+                    {item === "week" ? "7 days" : item[0].toUpperCase() + item.slice(1)}
                   </Text>
-                  {showAllApps ? (
-                    <ChevronUp size={16} color={colors.accent} strokeWidth={2.2} />
-                  ) : (
-                    <ChevronDown size={16} color={colors.accent} strokeWidth={2.2} />
-                  )}
                 </Pressable>
-              ) : null}
+              );
+            })}
+          </View>
+
+          {/* Tafik's own numbers lead, then the week's shape, and the screen-time
+              card closes with what that shape adds up to. */}
+          <FocusSummaryCard
+            label={periodLabel}
+            seconds={focusSummary?.seconds}
+            sessions={focusSummary?.count}
+          />
+
+          {period === "week" && sessions !== undefined ? (
+            <WeekTrendChart
+              focus={focusWeekDays}
+              screen={days}
+              onRequestScreenTime={() => setUsageDisclosureOpen(true)}
+            />
+          ) : null}
+
+          {error ? (
+            <View style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>Screen time unavailable</Text>
+              <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize, lineHeight: 19, marginTop: 5 }}>{error}</Text>
             </View>
-          </>
-        ) : days === undefined ? (
-          <AppUsageSkeleton />
-        ) : null}
-      </ScrollView>
+          ) : days === undefined ? (
+            <ScreenTimeCardSkeleton />
+          ) : days === null ? (
+            <Pressable
+              onPress={() => setUsageDisclosureOpen(true)}
+              style={[styles.messageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>Usage Access required</Text>
+              <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize, marginTop: 5 }}>Tap to open Android settings.</Text>
+            </Pressable>
+          ) : (
+            <ScreenTimeCard
+              periodLabel={periodLabel}
+              total={summary.seconds}
+              saving={saving}
+              label={
+                period === "today"
+                  ? "Today so far"
+                  : period === "yesterday"
+                    ? "Yesterday"
+                    : "Last 7 days"
+              }
+              perDay={period === "week"}
+              effect={tafikEffect}
+            />
+          )}
+
+          {days ? (
+            <>
+              <View style={styles.listHeader}>
+                <Text style={{ color: colors.text, fontSize: typeScale.body.fontSize, fontWeight: "600" }}>App usage</Text>
+                <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize }}>{summary.apps.length} apps</Text>
+              </View>
+              <View style={[styles.appList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                {summary.apps.length === 0 ? (
+                  <Text style={{ color: colors.textDim, fontSize: typeScale.callout.fontSize, padding: space(2) }}>
+                    No app activity of at least one minute.
+                  </Text>
+                ) : (
+                  visibleApps.map((app, index) => (
+                    <View
+                      key={app.pkg}
+                      style={[
+                        styles.appRow,
+                        index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+                      ]}
+                    >
+                      <AppIcon name={app.name} uri={icons[app.pkg]} />
+                      <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: typeScale.callout.fontSize }}>
+                        {app.name}
+                      </Text>
+                      <Text style={{ color: colors.textDim, fontSize: typeScale.callout.fontSize, fontVariant: ["tabular-nums"] }}>
+                        {duration(app.seconds)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+                {summary.apps.length > APP_PREVIEW_COUNT ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showAllApps }}
+                    accessibilityLabel={showAllApps ? "Show fewer apps" : "View all app usage"}
+                    onPress={() => setShowAllApps((current) => !current)}
+                    style={({ pressed }) => [
+                      styles.viewAllRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: pressed ? colors.accentWash : colors.surface,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: colors.accent, fontSize: typeScale.footnote.fontSize, fontWeight: "600" }}>
+                      {showAllApps ? "Show less" : `View all ${summary.apps.length} apps`}
+                    </Text>
+                    {showAllApps ? (
+                      <ChevronUp size={16} color={colors.accent} strokeWidth={2.2} />
+                    ) : (
+                      <ChevronDown size={16} color={colors.accent} strokeWidth={2.2} />
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          ) : days === undefined ? (
+            <AppUsageSkeleton />
+          ) : null}
+          <View style={{ height: NAV_CLEARANCE }} />
+        </ScrollView>
+        <ScrollEdgeFade visible={edge.visible} />
+      </View>
 
       <GuideSheet guide="insights" visible={guide.visible} onClose={guide.close} />
 
@@ -452,7 +453,7 @@ export default function InsightsScreen() {
   );
 }
 
-/** TockIn's own completed focus sessions for the period selected above. */
+/** Tafik's own completed focus sessions for the period selected above. */
 function FocusSummaryCard({
   label,
   seconds,
@@ -462,12 +463,11 @@ function FocusSummaryCard({
   seconds?: number;
   sessions?: number;
 }) {
-  const { colors } = useTheme();
   return (
     <View style={[styles.focusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.focusCardHeader}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>TockedIn</Text>
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>Tafik</Text>
+        <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize }}>{label}</Text>
       </View>
       <View style={styles.focusMetrics}>
         <FocusInsightMetric
@@ -496,7 +496,6 @@ function FocusInsightMetric({
   /** undefined while the read is still in flight, which the block stands in for. */
   value?: string;
 }) {
-  const { colors } = useTheme();
   return (
     <View style={styles.focusMetric}>
       <View style={[styles.focusMetricIcon, { backgroundColor: colors.accentWash }]}>
@@ -508,7 +507,7 @@ function FocusInsightMetric({
         ) : (
           <Text style={[styles.focusMetricValue, { color: colors.text }]}>{value}</Text>
         )}
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize }}>{label}</Text>
       </View>
     </View>
   );
@@ -519,7 +518,6 @@ function FocusInsightMetric({
 // padding and row heights as the real cards so nothing jumps when the numbers
 // land.
 function ScreenTimeCardSkeleton() {
-  const { colors } = useTheme();
   return (
     <View style={[styles.savingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.screenHeader}>
@@ -542,7 +540,6 @@ function ScreenTimeCardSkeleton() {
 const APP_SKELETON_WIDTHS = ["55%", "38%", "64%", "44%", "50%"] as const;
 
 function AppUsageSkeleton() {
-  const { colors } = useTheme();
   return (
     <>
       <View style={styles.listHeader}>
@@ -577,8 +574,7 @@ function AppUsageSkeleton() {
  * comparison into a scroll rather than a glance.
  *
  * Seven bars read as seven separate facts; a line reads as a direction. The
- * stroke is the accent, so it is the near-white neutral in dark mode and the
- * near-black one in light.
+ * stroke is the accent, the white of the one appearance Tafik has.
  */
 function WeekTrendChart({
   focus,
@@ -591,7 +587,6 @@ function WeekTrendChart({
   /** Offered when the screen-time series is picked but has nothing to draw. */
   onRequestScreenTime: () => void;
 }) {
-  const { colors } = useTheme();
   const [series, setSeries] = useState<Series>("focus");
   // The card is fluid but the SVG needs a pixel width, so it is measured.
   const [width, setWidth] = useState(0);
@@ -630,10 +625,10 @@ function WeekTrendChart({
   return (
     <View style={[styles.focusChart, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.focusChartHeader}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
-          {active === "screen" ? "Daily screen time" : "Daily TockedIn"}
+        <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>
+          {active === "screen" ? "Daily screen time" : "Daily Tafik"}
         </Text>
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>
+        <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize }}>
           {active === "screen"
             ? `${duration(total)} · ${duration(Math.round(total / Math.max(1, values.length)))} a day`
             : `${duration(total)} · ${sessions} ${sessions === 1 ? "session" : "sessions"}`}
@@ -669,7 +664,7 @@ function WeekTrendChart({
               <Text
                 style={{
                   color: selected ? colors.accent : colors.textDim,
-                  fontSize: 12,
+                  fontSize: typeScale.caption.fontSize,
                   fontWeight: "600",
                 }}
               >
@@ -758,12 +753,11 @@ function WeekTrendChart({
 
 /**
  * The app's own launcher icon, straight from the package manager. Usage stats
- * can name packages the launcher does not list — TockIn itself, keyboards,
+ * can name packages the launcher does not list — Tafik itself, keyboards,
  * system UI — so anything without an icon falls back to a lettered tile rather
  * than leaving a hole in the row.
  */
 function AppIcon({ name, uri }: { name: string; uri?: string }) {
-  const { colors } = useTheme();
 
   if (uri) {
     return (
@@ -778,7 +772,7 @@ function AppIcon({ name, uri }: { name: string; uri?: string }) {
 
   return (
     <View style={[styles.appIcon, styles.appIconFallback, { backgroundColor: colors.accentWash }]}>
-      <Text style={{ color: colors.textDim, fontSize: 12, fontWeight: "600" }}>
+      <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize, fontWeight: "600" }}>
         {name.trim().charAt(0).toUpperCase() || "?"}
       </Text>
     </View>
@@ -789,10 +783,10 @@ function AppIcon({ name, uri }: { name: string; uri?: string }) {
 /**
  * The selected period measured against the user's own usual day, which is the
  * only baseline that means anything: a national average would say nothing
- * about whether TockIn is working for this person.
+ * about whether Tafik is working for this person.
  *
  * The wording carries the direction rather than a colour. The accent means "a
- * session is running" everywhere else in TockIn, and borrowing it here to mean
+ * session is running" everywhere else in Tafik, and borrowing it here to mean
  * "a good day" would blunt that.
  */
 function ScreenTimeCard({
@@ -813,9 +807,8 @@ function ScreenTimeCard({
   label: string;
   /** The period is an average of several days, so the headline says "a day". */
   perDay: boolean;
-  effect: TockInEffect | null;
+  effect: TafikEffect | null;
 }) {
-  const { colors } = useTheme();
   const ready = saving !== null && saving.baselineDays >= MIN_BASELINE_DAYS;
 
   const difference = saving ? saving.baseline - saving.current : 0;
@@ -849,7 +842,7 @@ function ScreenTimeCard({
             Learning your usual day
           </Text>
           <Text style={[styles.savingSub, { color: colors.textDim }]}>
-            TockIn measures your screen time against your own average. That needs{" "}
+            Tafik measures your screen time against your own average. That needs{" "}
             {MIN_BASELINE_DAYS} full days, and it has {saving?.baselineDays ?? 0}{" "}
             {saving?.baselineDays === 1 ? "day" : "days"} so far.
           </Text>
@@ -890,7 +883,7 @@ function ScreenTimeCard({
             </View>
           ) : (
             <Text style={[styles.savingBaselineNote, { color: colors.textDim }]}>
-              Your usual day is the average of the other {saving.baselineDays} days TockIn has
+              Your usual day is the average of the other {saving.baselineDays} days Tafik has
               recorded.
             </Text>
           )}
@@ -903,13 +896,11 @@ function ScreenTimeCard({
 /**
  * One side of the comparison. Horizontal, so the pair is read as one ratio.
  *
- * Both bars are filled with the accent, which is the near-white neutral in dark
- * mode and the near-black one in light. Drawing the baseline in a fainter
- * colour lost it against its own track in dark mode, and the two lengths are
- * what carry the comparison anyway.
+ * Both bars are filled with the accent, white on black. Drawing the baseline in
+ * a fainter colour lost it against its own track, and the two lengths are what
+ * carry the comparison anyway.
  */
 function ComparisonBar({ label, seconds, max }: { label: string; seconds: number; max: number }) {
-  const { colors } = useTheme();
   // A day with no recorded time still gets a sliver, otherwise the row looks
   // like it failed to load rather than like a genuine zero.
   const width = seconds === 0 ? 0 : Math.max(4, (seconds / max) * 100);
@@ -935,11 +926,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: space(3),
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(1.5),
   },
   segment: {
     flexDirection: "row",
@@ -989,7 +975,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   focusMetricValue: {
-    fontSize: 20,
+    fontSize: typeScale.headline.fontSize,
     lineHeight: 24,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
@@ -1018,7 +1004,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 44,
     textAlign: "center",
-    fontSize: 10,
+    fontSize: typeScale.label.fontSize,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
@@ -1029,7 +1015,7 @@ const styles = StyleSheet.create({
   focusDayName: {
     flex: 1,
     textAlign: "center",
-    fontSize: 11,
+    fontSize: typeScale.label.fontSize,
   },
   messageCard: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -1045,10 +1031,10 @@ const styles = StyleSheet.create({
   },
   screenHeaderLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
   },
   screenHeaderTotal: {
-    fontSize: 15,
+    fontSize: typeScale.callout.fontSize,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
@@ -1112,18 +1098,18 @@ const styles = StyleSheet.create({
     marginBottom: space(3),
   },
   savingHeadline: {
-    fontSize: 19,
+    fontSize: typeScale.headline.fontSize,
     lineHeight: 25,
     fontWeight: "600",
     letterSpacing: -0.3,
     fontVariant: ["tabular-nums"],
   },
   savingLearningTitle: {
-    fontSize: 15,
+    fontSize: typeScale.callout.fontSize,
     fontWeight: "600",
   },
   savingSub: {
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
     lineHeight: 17,
     marginTop: 3,
   },
@@ -1138,7 +1124,7 @@ const styles = StyleSheet.create({
   },
   savingBarLabel: {
     width: 84,
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
   },
   savingBarTrack: {
     flex: 1,
@@ -1153,7 +1139,7 @@ const styles = StyleSheet.create({
   savingBarValue: {
     width: 54,
     textAlign: "right",
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
@@ -1167,12 +1153,12 @@ const styles = StyleSheet.create({
   },
   savingFootnote: {
     flex: 1,
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
     lineHeight: 17,
   },
   savingBaselineNote: {
     marginTop: space(1.5),
-    fontSize: 11,
+    fontSize: typeScale.label.fontSize,
     lineHeight: 16,
   },
   iconBox: {

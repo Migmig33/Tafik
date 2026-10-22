@@ -15,7 +15,8 @@ import {
   type RegisteredCard,
   removeRegisteredCard,
 } from "../store";
-import { radius, space, useTheme } from "../theme";
+import { radius, space, colors, typeScale } from "../theme";
+import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
 import { Text } from "../typography";
 
 /**
@@ -26,16 +27,16 @@ import { Text } from "../typography";
 export default function EmergencyScreen({
   nav,
   active,
-  sessionMode = "tockin",
+  sessionMode = "tafik",
   onUnlock,
 }: {
   nav: Nav;
   active: boolean;
-  sessionMode?: "tockin" | "studin";
+  sessionMode?: "tafik" | "cycle";
   /** Ends the session and spends one unlock. Resolves with the number left. */
   onUnlock: () => Promise<number>;
 }) {
-  const { colors } = useTheme();
+  const edge = useScrollEdge();
   const [left, setLeft] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -80,7 +81,7 @@ export default function EmergencyScreen({
         "Card removed",
         next.length === 0
           ? `${card.label} is gone and no card is registered. You will need to register one before your next session.`
-          : `${card.label} will no longer unlock TockIn.`,
+          : `${card.label} will no longer unlock Tafik.`,
         next.length === 0
           ? [
               { text: "Later", style: "cancel" },
@@ -106,20 +107,20 @@ export default function EmergencyScreen({
 
   const exhausted = left !== null && left <= 0;
   const resetsOn = emergencyResetLabel();
-  // Unlocking ends the session, which clears the caller's StudIn state before
+  // Unlocking ends the session, which clears the caller's Cycle state before
   // this screen re-renders. Latch the mode it was opened for, so the copy that
   // follows still speaks about the session the user actually exited.
-  const [studIn] = useState(sessionMode === "studin");
-  const returnScreen = studIn ? "studin" : "home";
+  const [cycle] = useState(sessionMode === "cycle");
+  const returnScreen = cycle ? "cycle" : "home";
 
   const confirmUnlock = () => {
-    if (!studIn) {
+    if (!cycle) {
       void unlock();
       return;
     }
     Alert.alert(
       "Use Emergency Exit?",
-      "This will end your StudIn session before the Study timer is complete.",
+      "This will end your Cycle session before the Study timer is complete.",
       [
         { text: "Keep studying", style: "cancel" },
         { text: "Emergency exit", style: "destructive", onPress: () => void unlock() },
@@ -129,84 +130,87 @@ export default function EmergencyScreen({
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
-        <Title>{done ? "Apps unblocked" : studIn ? "Emergency Exit" : "Card lost?"}</Title>
-        <View style={{ height: space(1) }} />
-        <Body dim>
-          {done
-            ? cards.length === 0
-              ? "Your apps are available again. No card is registered, so register one before your next session."
-              : studIn
-                ? "Your StudIn session ended early and its blocked apps are available again."
-                : "Your session was ended without the card and every blocked app is available again."
-            : studIn
-              ? "This will end your StudIn session before your Study timer is complete. Use this only when you need to leave early."
-              : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
-                `${EMERGENCY_HOLD_SECONDS} seconds and every blocked app unlocks straight away.`}
-        </Body>
+      <View style={{ flex: 1 }}>
+        <ScrollView {...edge.scrollProps} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+          <Title>{done ? "Apps unblocked" : cycle ? "Emergency Exit" : "Card lost?"}</Title>
+          <View style={{ height: space(1) }} />
+          <Body dim>
+            {done
+              ? cards.length === 0
+                ? "Your apps are available again. No card is registered, so register one before your next session."
+                : cycle
+                  ? "Your Cycle session ended early and its blocked apps are available again."
+                  : "Your session was ended without the card and every blocked app is available again."
+              : cycle
+                ? "This will end your Cycle session before your Study timer is complete. Use this only when you need to leave early."
+                : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
+                  `${EMERGENCY_HOLD_SECONDS} seconds and every blocked app unlocks straight away.`}
+          </Body>
 
-        <View style={{ height: space(2.5) }} />
+          <View style={{ height: space(2.5) }} />
 
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-            {done ? (
-              <LockKeyholeOpen size={20} color={colors.accent} strokeWidth={2.1} />
-            ) : (
-              <TriangleAlert size={20} color={colors.accent} strokeWidth={2.1} />
-            )}
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
+              {done ? (
+                <LockKeyholeOpen size={20} color={colors.accent} strokeWidth={2.1} />
+              ) : (
+                <TriangleAlert size={20} color={colors.accent} strokeWidth={2.1} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>
+                {left === null
+                  ? "Checking your allowance…"
+                  : `${left} of ${EMERGENCY_UNLOCKS_PER_MONTH} emergency unlocks left`}
+              </Text>
+              <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize, marginTop: 4, lineHeight: 17 }}>
+                {exhausted
+                  ? `All ${EMERGENCY_UNLOCKS_PER_MONTH} are spent. Your allowance refills on ${resetsOn}.`
+                  : `This month's allowance. It resets to ${EMERGENCY_UNLOCKS_PER_MONTH} on ${resetsOn}.`}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
-              {left === null
-                ? "Checking your allowance…"
-                : `${left} of ${EMERGENCY_UNLOCKS_PER_MONTH} emergency unlocks left`}
-            </Text>
-            <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
-              {exhausted
-                ? `All ${EMERGENCY_UNLOCKS_PER_MONTH} are spent. Your allowance refills on ${resetsOn}.`
-                : `This month's allowance. It resets to ${EMERGENCY_UNLOCKS_PER_MONTH} on ${resetsOn}.`}
-            </Text>
-          </View>
-        </View>
 
-        <View style={{ flex: 1, minHeight: space(3) }} />
+          <View style={{ flex: 1, minHeight: space(3) }} />
 
-        {/* Registering only leads the way out when there is nothing left to tap.
-            A user who still has a working card came here for another reason. */}
-        {done ? (
-          cards.length === 0 ? (
-            <>
-              <PrimaryButton label="Register a new card" onPress={() => nav("cardSetup")} />
-              <GhostButton label="Back to home" onPress={() => nav("home")} />
-            </>
-          ) : (
-            <PrimaryButton label="Back to home" onPress={() => nav("home")} />
-          )
-        ) : (
-          <>
-            {!active && (
+          {/* Registering only leads the way out when there is nothing left to tap.
+              A user who still has a working card came here for another reason. */}
+          {done ? (
+            cards.length === 0 ? (
               <>
-                <Body dim>No session is running, so there is nothing to unlock.</Body>
-                <View style={{ height: space(1.5) }} />
+                <PrimaryButton label="Register a new card" onPress={() => nav("cardSetup")} />
+                <GhostButton label="Back to home" onPress={() => nav("home")} />
               </>
-            )}
-            <HoldButton
-              label={
-                studIn
-                  ? `Hold ${EMERGENCY_HOLD_SECONDS}s for Emergency Exit`
-                  : `Hold ${EMERGENCY_HOLD_SECONDS}s to unlock`
-              }
-              seconds={EMERGENCY_HOLD_SECONDS}
-              onComplete={confirmUnlock}
-              disabled={exhausted || !active || left === null || busy}
-            />
-            <GhostButton
-              label={studIn ? "Keep studying" : "Cancel"}
-              onPress={() => nav(returnScreen)}
-            />
-          </>
-        )}
-      </ScrollView>
+            ) : (
+              <PrimaryButton label="Back to home" onPress={() => nav("home")} />
+            )
+          ) : (
+            <>
+              {!active && (
+                <>
+                  <Body dim>No session is running, so there is nothing to unlock.</Body>
+                  <View style={{ height: space(1.5) }} />
+                </>
+              )}
+              <HoldButton
+                label={
+                  cycle
+                    ? `Hold ${EMERGENCY_HOLD_SECONDS}s for Emergency Exit`
+                    : `Hold ${EMERGENCY_HOLD_SECONDS}s to unlock`
+                }
+                seconds={EMERGENCY_HOLD_SECONDS}
+                onComplete={confirmUnlock}
+                disabled={exhausted || !active || left === null || busy}
+              />
+              <GhostButton
+                label={cycle ? "Keep studying" : "Cancel"}
+                onPress={() => nav(returnScreen)}
+              />
+            </>
+          )}
+        </ScrollView>
+        <ScrollEdgeFade visible={edge.visible} />
+      </View>
 
       {/* Not dismissible by the backdrop: both answers are one tap, and a stray
           press outside would leave a lost card still registered. */}
@@ -218,7 +222,7 @@ export default function EmergencyScreen({
             </View>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Why did you need this?</Text>
             <Text style={[styles.sheetBody, { color: colors.textDim }]}>
-              If the card is gone for good, TockIn should stop listing it as a way back in.
+              If the card is gone for good, Tafik should stop listing it as a way back in.
             </Text>
             <View style={styles.sheetActions}>
               <PrimaryButton label="I lost my card" onPress={reportLost} />
@@ -257,7 +261,7 @@ export default function EmergencyScreen({
                   ]}
                 >
                   <CreditCard size={17} color={colors.textDim} strokeWidth={2.1} />
-                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500", flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "500", flex: 1 }}>
                     {card.label}
                   </Text>
                 </Pressable>
@@ -304,11 +308,11 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     marginTop: space(0.5),
-    fontSize: 18,
+    fontSize: typeScale.headline.fontSize,
     fontWeight: "600",
   },
   sheetBody: {
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     lineHeight: 20,
     textAlign: "center",
   },

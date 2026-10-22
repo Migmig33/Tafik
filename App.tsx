@@ -5,17 +5,17 @@ import { Poppins_600SemiBold } from "@expo-google-fonts/poppins/600SemiBold";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins/700Bold";
 import { useFonts } from "expo-font";
 import { useEffect, useRef, useState } from "react";
-import { Alert, View } from "react-native";
+import { Alert, BackHandler, View } from "react-native";
 import {
   BlockingSessionState,
-  consumeStudInResult,
+  consumeCycleResult,
   endBlockingSession,
   getBlockingSessionState,
   hasAccessibilityAccess,
   hasAccessibilityServiceSupport,
-  hasStudInSessionSupport,
+  hasCycleSessionSupport,
   startBlockingSession,
-  startStudInBlockingSession,
+  startCycleBlockingSession,
 } from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
 import BottomNav from "./src/BottomNav";
@@ -25,12 +25,13 @@ import BlocklistScreen from "./src/screens/BlocklistScreen";
 import CardSetupScreen from "./src/screens/CardSetupScreen";
 import EmergencyScreen from "./src/screens/EmergencyScreen";
 import HomeScreen from "./src/screens/HomeScreen";
+import NfcTapScreen from "./src/screens/NfcTapScreen";
 import IntroScreen from "./src/screens/IntroScreen";
 import InsightsScreen from "./src/screens/InsightsScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
-import StudInScreen from "./src/screens/StudInScreen";
+import CycleScreen from "./src/screens/CycleScreen";
 import WelcomeScreen from "./src/screens/WelcomeScreen";
 import {
   clearActiveSessionStartedAt,
@@ -40,25 +41,28 @@ import {
   getActiveSessionStartedAt,
   getBlocklist,
   getOnboardingDone,
+  getThemeMode,
   getRegisteredCards,
   type FocusMode,
   getFocusMode,
-  getStudInConfig,
+  getCycleConfig,
   getWelcomeSeen,
   purgeRetiredKeys,
   recordSession,
   setActiveSessionStartedAt,
   setWelcomeSeen,
 } from "./src/store";
-import { ThemeProvider, useTheme } from "./src/theme";
+import { applyThemeMode, colors, useThemeMode } from "./src/theme";
+import { ScreenFade } from "./src/motion";
+import { TabBarBelowContext } from "./src/tabBar";
 
 /**
- * What starting a StudIn cycle actually commits the user to. Said before the
+ * What starting a cycle actually commits the user to. Said before the
  * cycle begins rather than discovered halfway through it: a Study interval is
  * the one state in the app where tapping the card does nothing, and finding
  * that out while locked out is the worst possible moment to learn it.
  */
-function studInCommitment(unlocksLeft: number): string {
+function cycleCommitment(unlocksLeft: number): string {
   return (
     "Once Study starts, your card will not end it. The card works again during a " +
     "Break, and tapping it then ends the whole cycle.\n\n" +
@@ -68,7 +72,17 @@ function studInCommitment(unlocksLeft: number): string {
 }
 
 function AppContent() {
-  const { colors, isDark } = useTheme();
+  // Re-renders the whole app on a theme change, so every colour updates at once.
+  const themeMode = useThemeMode();
+  // TEMPORARY onboarding preview: shows the first-launch flow without touching real state.
+  const [onboardingPreview, setOnboardingPreview] = useState(false);
+  // TEMPORARY: a preview opens on the intro, as a first launch does, before the permission pages.
+  const [previewIntro, setPreviewIntro] = useState(false);
+  const exitPreview = () => {
+    setOnboardingPreview(false);
+    setPreviewIntro(false);
+    setScreen("settings");
+  };
   const [ready, setReady] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
   // Assume seen until storage says otherwise, so a returning user never gets a
@@ -79,22 +93,31 @@ function AppContent() {
   // The native foreground service owns enforcement; JS reflects its session state.
   const [active, setActive] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [studInSession, setStudInSession] = useState<BlockingSessionState | null>(null);
-  const [studInCompleted, setStudInCompleted] = useState(false);
+  const [cycleSession, setCycleSession] = useState<BlockingSessionState | null>(null);
+  const [cycleCompleted, setCycleCompleted] = useState(false);
   const [blockCount, setBlockCount] = useState(0);
   // Held here rather than read per screen so the tab bar's centre button and
   // home's circle always show the same mode at the same moment.
-  const [focusMode, setFocusMode] = useState<FocusMode>("tockin");
+  const [focusMode, setFocusMode] = useState<FocusMode>("tafik");
   // Which read is open, if any. Arming the reader stays a deliberate step so a
   // stray card cannot lock or unlock the phone; the tab bar's centre button is
   // what arms it, and home renders the feedback.
-  const [scanning, setScanning] = useState<null | "start" | "end" | "studin">(null);
+  const [scanning, setScanning] = useState<null | "start" | "end" | "cycle">(null);
+  // Android back returns from the card screen to Home instead of leaving the app.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (screen !== "nfc") return false;
+      setScreen("home");
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen]);
   const endingSession = useRef(false);
-  const syncingStudIn = useRef(false);
+  const syncingCycle = useRef(false);
 
   useEffect(() => {
     (async () => {
-      const [done, savedFocusMode, accessibility, list, nativeSession, savedStartedAt, seenWelcome] = await Promise.all([
+      const [done, savedFocusMode, accessibility, list, nativeSession, savedStartedAt, seenWelcome, savedTheme] = await Promise.all([
         getOnboardingDone(),
         getFocusMode(),
         hasAccessibilityAccess(),
@@ -102,17 +125,21 @@ function AppContent() {
         getBlockingSessionState(),
         getActiveSessionStartedAt(),
         getWelcomeSeen(),
+        getThemeMode(),
       ]);
-      const result = await consumeStudInResult();
-      if (result.focusSeconds > 0) await recordSession(result.focusSeconds);
+      // Dark stays the default for anyone who has never chosen. A saved choice is
+      // applied as it is read, so the first real frame already has the right colours.
+      applyThemeMode(savedTheme ?? "dark");
+      const result = await consumeCycleResult();
+      if (result.focusSeconds > 0) await recordSession(result.focusSeconds, result.completed, { mode: "cycle" });
       const sessionActive = nativeSession.active;
       setBlockCount(list.length);
       setFocusMode(savedFocusMode);
       setWelcomeSeenState(seenWelcome);
       setActive(sessionActive);
-      setStudInCompleted(result.completed);
-      if (sessionActive && nativeSession.mode === "studin") {
-        setStudInSession(nativeSession);
+      setCycleCompleted(result.completed);
+      if (sessionActive && nativeSession.mode === "cycle") {
+        setCycleSession(nativeSession);
         setStartedAt(null);
         if (savedStartedAt !== null) await clearActiveSessionStartedAt();
       } else if (sessionActive) {
@@ -124,7 +151,7 @@ function AppContent() {
       // of it. Route them through the new disclosure, but never hide an active
       // session's NFC unlock screen if access was disabled mid-session.
       const sessionScreen =
-        nativeSession.mode === "studin" || result.completed ? "studin" : "home";
+        nativeSession.mode === "cycle" || result.completed ? "cycle" : "home";
       // A binary whose native module predates the Accessibility service can
       // neither report nor grant it, so gating on it there would strand the
       // user in onboarding behind a button that can only explain itself. Such
@@ -150,30 +177,35 @@ function AppContent() {
   // Native time is authoritative. Polling only mirrors it into the visible UI;
   // the foreground service performs the actual phase transitions and blocking.
   useEffect(() => {
-    if (!active || studInSession?.mode !== "studin") return;
+    if (!active || cycleSession?.mode !== "cycle") return;
     let cancelled = false;
 
     const refresh = async () => {
-      if (syncingStudIn.current || endingSession.current) return;
-      syncingStudIn.current = true;
+      if (syncingCycle.current || endingSession.current) return;
+      syncingCycle.current = true;
       try {
         const next = await getBlockingSessionState();
         if (cancelled) return;
-        if (next.active && next.mode === "studin") {
-          setStudInSession(next);
+        if (next.active && next.mode === "cycle") {
+          setCycleSession(next);
           return;
         }
 
         setActive(false);
-        setStudInSession(null);
-        const result = await consumeStudInResult();
-        if (result.focusSeconds > 0) await recordSession(result.focusSeconds);
+        setCycleSession(null);
+        const result = await consumeCycleResult();
+        if (result.focusSeconds > 0) {
+          await recordSession(result.focusSeconds, result.completed, {
+            mode: "cycle",
+            rounds: cycleSession?.totalRounds,
+          });
+        }
         if (!cancelled && result.completed) {
-          setStudInCompleted(true);
-          setScreen("studin");
+          setCycleCompleted(true);
+          setScreen("cycle");
         }
       } finally {
-        syncingStudIn.current = false;
+        syncingCycle.current = false;
       }
     };
 
@@ -183,21 +215,21 @@ function AppContent() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [active, studInSession?.mode]);
+  }, [active, cycleSession?.mode]);
 
   // An armed reader that outlives the screen showing the ripple would sit
   // listening with nothing on screen to say so.
   useEffect(() => {
-    if (screen !== "home" && screen !== "studin") void cancelCardRead();
+    if (screen !== "nfc" && screen !== "cycle") void cancelCardRead();
   }, [screen]);
 
   // Hold on a bare background until storage answers, so we know which of the
   // two openings to play. The read is a few milliseconds; starting the intro
-  // first would mean playing the whoosh twice on a first launch.
+  // first would show the intro twice on a first launch.
   if (!ready) {
     return (
       <>
-        <StatusBar style={isDark ? "light" : "dark"} />
+        <StatusBar style={themeMode === "light" ? "dark" : "light"} />
         <View style={{ flex: 1, backgroundColor: colors.bg }} />
       </>
     );
@@ -214,7 +246,7 @@ function AppContent() {
     };
     return (
       <>
-        <StatusBar style={isDark ? "light" : "dark"} />
+        <StatusBar style={themeMode === "light" ? "dark" : "light"} />
         <WelcomeScreen onGetStarted={finishWelcome} />
       </>
     );
@@ -224,7 +256,7 @@ function AppContent() {
   if (!introFinished) {
     return (
       <>
-        <StatusBar style={isDark ? "light" : "dark"} />
+        <StatusBar style={themeMode === "light" ? "dark" : "light"} />
         <IntroScreen onFinish={() => setIntroFinished(true)} />
       </>
     );
@@ -242,37 +274,44 @@ function AppContent() {
     }
     setActive(true);
     setStartedAt(sessionStartedAt);
-    setStudInSession(null);
-    setStudInCompleted(false);
+    setCycleSession(null);
+    setCycleCompleted(false);
   };
 
-  const endSession = async () => {
+  // A session ended by the emergency unlock is a cancel, so it never earns its
+  // day in the streak, however long it ran.
+  const endSession = async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (endingSession.current) return;
     endingSession.current = true;
     try {
-      const endingStudIn = studInSession?.mode === "studin";
+      const endingCycle = cycleSession?.mode === "cycle";
       const sessionStartedAt = startedAt ?? (await getActiveSessionStartedAt());
       await endBlockingSession();
-      if (endingStudIn) {
-        const result = await consumeStudInResult();
-        if (result.focusSeconds > 0) await recordSession(result.focusSeconds);
+      if (endingCycle) {
+        const result = await consumeCycleResult();
+        if (result.focusSeconds > 0) {
+          await recordSession(result.focusSeconds, result.completed && !cancelled, {
+            mode: "cycle",
+            rounds: cycleSession?.totalRounds,
+          });
+        }
       } else if (sessionStartedAt !== null) {
         const elapsedSeconds = Math.floor((Date.now() - sessionStartedAt) / 1000);
-        await recordSession(elapsedSeconds);
+        await recordSession(elapsedSeconds, !cancelled, { mode: "tafik" });
       }
       await clearActiveSessionStartedAt();
       setActive(false);
       setStartedAt(null);
-      setStudInSession(null);
-      setStudInCompleted(false);
+      setCycleSession(null);
+      setCycleCompleted(false);
     } finally {
       endingSession.current = false;
     }
   };
 
-  const startStudIn = async () => {
-    const [list, config] = await Promise.all([getBlocklist(), getStudInConfig()]);
-    await startStudInBlockingSession(
+  const startCycle = async () => {
+    const [list, config] = await Promise.all([getBlocklist(), getCycleConfig()]);
+    await startCycleBlockingSession(
       list,
       config.studyMinutes,
       config.breakMinutes,
@@ -282,9 +321,9 @@ function AppContent() {
     await clearActiveSessionStartedAt();
     setActive(true);
     setStartedAt(null);
-    setStudInSession(nativeSession);
-    setStudInCompleted(false);
-    setScreen("studin");
+    setCycleSession(nativeSession);
+    setCycleCompleted(false);
+    setScreen("cycle");
   };
 
   /**
@@ -292,7 +331,7 @@ function AppContent() {
    * registered. Every card-driven action shares it, so a stray card can never
    * start or end anything on any screen.
    */
-  const scanRegisteredCard = async (kind: "start" | "end" | "studin"): Promise<boolean> => {
+  const scanRegisteredCard = async (kind: "start" | "end" | "cycle"): Promise<boolean> => {
     const cards = await getRegisteredCards();
     if (cards.length === 0) {
       setScreen("cardSetup");
@@ -307,24 +346,24 @@ function AppContent() {
       return false;
     }
     if (!cards.some((card) => card.uid === result.uid)) {
-      Alert.alert("Different card", "That card isn't registered with TockIn.");
+      Alert.alert("Different card", "That card isn't registered with Tafik.");
       return false;
     }
     return true;
   };
 
   /**
-   * Asks before a StudIn cycle begins. Wrapped in a promise because the caller
+   * Asks before a cycle begins. Wrapped in a promise because the caller
    * has to wait on the answer before arming the reader, and Alert only speaks
    * in callbacks. onDismiss covers the Android back gesture, which would
    * otherwise leave this promise unresolved and the button dead.
    */
-  const confirmStudIn = async (): Promise<boolean> => {
+  const confirmCycle = async (): Promise<boolean> => {
     const unlocksLeft = await getEmergencyUnlocksLeft();
     return new Promise((resolve) => {
-      Alert.alert("Start StudIn?", studInCommitment(unlocksLeft), [
+      Alert.alert("Start Cycle?", cycleCommitment(unlocksLeft), [
         { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        { text: "Start StudIn", onPress: () => resolve(true) },
+        { text: "Start Cycle", onPress: () => resolve(true) },
       ], { onDismiss: () => resolve(false) });
     });
   };
@@ -344,7 +383,7 @@ function AppContent() {
     if ((await getRegisteredCards()).length === 0) {
       Alert.alert(
         "Register a card first",
-        "TockIn will not start a session you have no way to end. Register a card, and after that you can start without tapping it.",
+        "Tafik will not start a session you have no way to end. Register a card, and after that you can start without tapping it.",
         [
           { text: "Not now", style: "cancel" },
           {
@@ -360,31 +399,31 @@ function AppContent() {
     }
 
     const [unlocksLeft, mode] = await Promise.all([getEmergencyUnlocksLeft(), getFocusMode()]);
-    const studIn = mode === "studin";
+    const cycle = mode === "cycle";
     Alert.alert(
-      studIn ? "Start StudIn?" : `Lock ${blockCount} ${blockCount === 1 ? "app" : "apps"}?`,
+      cycle ? "Start Cycle?" : `Lock ${blockCount} ${blockCount === 1 ? "app" : "apps"}?`,
       // The remaining allowance is named rather than described: an abstract
       // warning is easy to wave through, a number that is about to drop is not.
-      // StudIn gets its own wording because promising that the card unlocks the
+      // Cycle gets its own wording because promising that the card unlocks the
       // apps would be a lie for the whole of a Study interval.
-      studIn
-        ? studInCommitment(unlocksLeft)
+      cycle
+        ? cycleCommitment(unlocksLeft)
         : `Only your registered card can unlock them. Emergency unlock is the only other way out, and you have ${unlocksLeft} left this month.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: studIn ? "Start StudIn" : "Lock apps",
+          text: cycle ? "Start Cycle" : "Lock apps",
           onPress: () => {
             void (async () => {
-              // Drop the open read first. The tockIn call still waiting on it
+              // Drop the open read first. The tafik call still waiting on it
               // sees a cancelled scan and bails, so nothing starts twice.
               await cancelCardRead();
               try {
-                if (studIn) await startStudIn();
+                if (cycle) await startCycle();
                 else await startSession();
               } catch (e: any) {
                 Alert.alert(
-                  studIn ? "StudIn couldn't start" : "TockIn couldn't lock apps",
+                  cycle ? "Cycle couldn't start" : "Tafik couldn't lock apps",
                   e?.message ?? "Please try again."
                 );
               }
@@ -395,20 +434,20 @@ function AppContent() {
     );
   };
 
-  // A break is the one point in a StudIn cycle where the card works again.
+  // A break is the one point in a cycle where the card works again.
   // Ending here banks the Study time already finished and costs no emergency
   // unlock, which is what makes the Study phase itself safe to lock down.
-  const endStudInWithCard = async () => {
-    if (scanning || studInSession?.phase !== "break") return;
-    if (!(await scanRegisteredCard("studin"))) return;
+  const endCycleWithCard = async () => {
+    if (scanning || cycleSession?.phase !== "break") return;
+    if (!(await scanRegisteredCard("cycle"))) return;
     // The break can run out while the reader is still waiting for the card, and
     // a card that lands after that must not cut the next Study short.
     const live = await getBlockingSessionState();
-    if (live.active && live.mode === "studin" && live.phase !== "break") {
-      setStudInSession(live);
+    if (live.active && live.mode === "cycle" && live.phase !== "break") {
+      setCycleSession(live);
       Alert.alert(
         "Study has resumed",
-        "The break ended before that card landed, so StudIn is still running."
+        "The break ended before that card landed, so Cycle is still running."
       );
       return;
     }
@@ -416,25 +455,25 @@ function AppContent() {
       await endSession();
       setScreen("home");
     } catch (e: any) {
-      Alert.alert("StudIn couldn't end", e?.message ?? "Please try again.");
+      Alert.alert("Cycle couldn't end", e?.message ?? "Please try again.");
     }
   };
 
   // The one primary action, wherever the user is: arm the reader, then let the
   // card decide whether this starts or ends a session. Lives here rather than
   // on home because the button that triggers it is in the tab bar.
-  const tockIn = async () => {
+  const tafik = async () => {
     if (scanning) return;
-    // A running StudIn cycle owns the card: during Study it is inert, and
-    // during a break it ends the cycle from the StudIn screen itself.
-    if (active && studInSession?.mode === "studin") {
-      setScreen("studin");
+    // A running cycle owns the card: during Study it is inert, and
+    // during a break it ends the cycle from the Cycle screen itself.
+    if (active && cycleSession?.mode === "cycle") {
+      setScreen("cycle");
       return;
     }
     const action = active ? "end" : "start";
     // The ripple and the copy that explain the wait are on home, so never arm
     // the reader while the user is looking at another tab.
-    if (screen !== "home") setScreen("home");
+    if (screen !== "nfc") setScreen("nfc");
     // Catch both dead ends before arming. Finding out that there is nothing to
     // lock only after tapping the card is a wasted trip.
     if (action === "start" && blockCount === 0) {
@@ -445,26 +484,26 @@ function AppContent() {
       return;
     }
     // One card, one tap, and Settings decides which session it opens.
-    const focusMode = action === "start" ? await getFocusMode() : "tockin";
-    const studIn = focusMode === "studin";
-    if (studIn && !hasStudInSessionSupport()) {
+    const focusMode = action === "start" ? await getFocusMode() : "tafik";
+    const cycle = focusMode === "cycle";
+    if (cycle && !hasCycleSessionSupport()) {
       Alert.alert(
         "Native rebuild required",
-        "This installed build does not include the StudIn timer service yet. Install a newly rebuilt APK, or turn StudIn off in Settings to use the standard session."
+        "This installed build does not include the Cycle timer service yet. Install a newly rebuilt APK, or turn Cycle off in Settings to use the standard session."
       );
       return;
     }
     // Asked before the reader is armed, so Cancel costs nothing. Once the card
     // lands the cycle is already running and the answer would be too late.
-    if (studIn && !(await confirmStudIn())) return;
-    if (!(await scanRegisteredCard(action === "start" && studIn ? "studin" : action))) return;
+    if (cycle && !(await confirmCycle())) return;
+    if (!(await scanRegisteredCard(action === "start" && cycle ? "cycle" : action))) return;
     try {
       if (action === "end") await endSession();
-      else if (studIn) await startStudIn();
+      else if (cycle) await startCycle();
       else await startSession();
     } catch (e: any) {
       Alert.alert(
-        studIn ? "StudIn couldn't start" : "TockIn couldn't lock apps",
+        cycle ? "Cycle couldn't start" : "Tafik couldn't lock apps",
         e?.message ?? "Please try again."
       );
     }
@@ -478,13 +517,16 @@ function AppContent() {
         "You have no emergency unlocks left this month. They refill on the 1st."
       );
     }
-    await endSession();
+    await endSession({ cancelled: true });
     return consumeEmergencyUnlock();
   };
 
+  // The tab bar is shown on these four screens only.
+  const tabBarBelow = screen === "home" || screen === "nfc" || screen === "insights" || screen === "blocklist" || screen === "settings";
+
   return (
     <>
-      <StatusBar style={isDark ? "light" : "dark"} />
+      <StatusBar style={themeMode === "light" ? "dark" : "light"} />
       {/* The tab bar sits outside Screen, so the shell paints the same ground
           under it — otherwise a band of a different colour shows behind the bar. */}
       <View
@@ -493,10 +535,24 @@ function AppContent() {
           backgroundColor: colors.bg,
         }}
       >
-        {screen === "onboarding" && <OnboardingScreen nav={setScreen} />}
-        {/* A StudIn read is still a start read as far as home is concerned, so
+        <TabBarBelowContext.Provider value={tabBarBelow}>
+        <ScreenFade key={screen}>
+        {screen === "onboarding" && onboardingPreview && previewIntro && (
+          <IntroScreen onFinish={() => setPreviewIntro(false)} onExitPreview={exitPreview} />
+        )}
+        {screen === "onboarding" && !(onboardingPreview && previewIntro) && (
+          <OnboardingScreen
+            nav={setScreen}
+            preview={onboardingPreview}
+            onExitPreview={exitPreview}
+            startFirstSession={startSession}
+            endFirstSession={() => endSession()}
+            scanRegisteredCard={scanRegisteredCard}
+          />
+        )}
+        {/* A Cycle read is still a start read as far as home is concerned, so
             it gets the same expanding rings and the same "hold your card" copy
-            as an ordinary TockIn scan. */}
+            as an ordinary Tafik scan. */}
         {screen === "home" && (
           <HomeScreen
             nav={setScreen}
@@ -504,21 +560,29 @@ function AppContent() {
             startedAt={startedAt}
             blockCount={blockCount}
             focusMode={focusMode}
+          />
+        )}
+        {screen === "nfc" && (
+          <NfcTapScreen
+            nav={setScreen}
+            active={active}
+            blockCount={blockCount}
+            cycleMode={focusMode === "cycle"}
             scanning={scanning === "end" ? "end" : scanning === null ? null : "start"}
-            onTockIn={() => void tockIn()}
+            onTafik={() => void tafik()}
             onStartWithoutCard={() => void startWithoutCard()}
           />
         )}
-        {screen === "studin" && (
-          <StudInScreen
-            session={studInSession}
-            completed={studInCompleted}
-            scanning={scanning === "studin"}
+        {screen === "cycle" && (
+          <CycleScreen
+            session={cycleSession}
+            completed={cycleCompleted}
+            scanning={scanning === "cycle"}
             blockCount={blockCount}
-            onEndWithCard={() => void endStudInWithCard()}
+            onEndWithCard={() => void endCycleWithCard()}
             onEmergency={() => setScreen("emergency")}
             onDone={() => {
-              setStudInCompleted(false);
+              setCycleCompleted(false);
               setScreen("home");
             }}
           />
@@ -530,6 +594,11 @@ function AppContent() {
             onManageCards={() => setScreen("cardSetup")}
             onOpenPrivacy={() => setScreen("privacy")}
             onModeChange={setFocusMode}
+            onPreviewOnboarding={() => {
+              setOnboardingPreview(true);
+              setPreviewIntro(true);
+              setScreen("onboarding");
+            }}
           />
         )}
         {screen === "privacy" && <PrivacyPolicyScreen onBack={() => setScreen("settings")} />}
@@ -540,25 +609,28 @@ function AppContent() {
           <EmergencyScreen
             nav={setScreen}
             active={active}
-            sessionMode={studInSession?.mode === "studin" ? "studin" : "tockin"}
+            sessionMode={cycleSession?.mode === "cycle" ? "cycle" : "tafik"}
             onUnlock={emergencyUnlock}
           />
         )}
-
+        </ScreenFade>
+        </TabBarBelowContext.Provider>
         {(screen === "home" ||
           screen === "insights" ||
           screen === "blocklist" ||
-          screen === "settings") && (
+          screen === "settings" ||
+          screen === "nfc") && (
           <BottomNav
             current={screen}
             nav={setScreen}
-            onTockIn={() => void tockIn()}
+            onTafik={() => void tafik()}
             onCancel={() => void cancelCardRead()}
             active={active}
             scanning={scanning !== null}
-            studIn={focusMode === "studin"}
+            cycle={focusMode === "cycle"}
           />
         )}
+
       </View>
     </>
   );
@@ -575,10 +647,8 @@ export default function App() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ThemeProvider>
-      <ErrorBoundary>
-        <AppContent />
-      </ErrorBoundary>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
   );
 }

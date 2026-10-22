@@ -1,15 +1,16 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import House from "lucide-react-native/icons/house";
 import ListChecks from "lucide-react-native/icons/list-checks";
-import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
+import Settings from "lucide-react-native/icons/settings";
 import X from "lucide-react-native/icons/x";
 import { AppMark } from "./components";
 import { Nav, ScreenName } from "./nav";
-import { space, useTheme } from "./theme";
-import { Text } from "./typography";
+import { PressableScale } from "./motion";
+import { ACTION_RISE, BAR_HEIGHT } from "./tabBar";
+import { space, colors } from "./theme";
 
 type Tab = Extract<ScreenName, "home" | "insights" | "blocklist" | "settings">;
 
@@ -17,71 +18,60 @@ const tabs: { screen: Tab; label: string; icon: LucideIcon }[] = [
   { screen: "home", label: "Home", icon: House },
   { screen: "insights", label: "Insights", icon: ChartNoAxesCombined },
   { screen: "blocklist", label: "Blocklist", icon: ListChecks },
-  { screen: "settings", label: "Settings", icon: SlidersHorizontal },
+  { screen: "settings", label: "Settings", icon: Settings },
 ];
 
 const ACTION_SIZE = 56;
 // How far the action button stands proud of the bar's top edge. The bar is
 // pushed down by exactly this much rather than the button being lifted out of
 // it, because Android clips children that overflow their parent.
-const ACTION_RISE = 26;
 
 export default function BottomNav({
   current,
   nav,
-  onTockIn,
+  onTafik,
   onCancel,
   active,
   scanning,
-  studIn = false,
+  cycle = false,
 }: {
-  current: Tab;
+  current: Tab | "nfc";
   nav: Nav;
   /** The app's primary action: arm the reader for a card tap. */
-  onTockIn: () => void;
+  onTafik: () => void;
   /** Drop the open read. The button is the only way to back out of a scan. */
   onCancel: () => void;
   /** A live focus session turns the centre action into the end-session X. */
   active: boolean;
   /** True while a read is open, which turns the button into that cancel. */
   scanning: boolean;
-  /** StudIn mode selected. The centre action names the session it will start. */
-  studIn?: boolean;
+  /** Cycle mode selected. The centre action names the session it will start. */
+  cycle?: boolean;
 }) {
-  const { colors } = useTheme();
-
   const tab = (item: (typeof tabs)[number]) => {
     const selected = current === item.screen;
     const Icon = item.icon;
     return (
-      <Pressable
+      <PressableScale
         key={item.screen}
         accessibilityRole="tab"
+        accessibilityLabel={item.label}
         accessibilityState={{ selected }}
         onPress={() => nav(item.screen)}
         style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.65 : 1 }]}
       >
+        {/* Icons only. The label stays in accessibilityLabel for screen readers. */}
         <Icon
-          size={21}
+          size={24}
           color={selected ? colors.accent : colors.textDim}
           strokeWidth={selected ? 2.4 : 2}
         />
-        <Text
-          numberOfLines={1}
-          style={{
-            color: selected ? colors.accent : colors.textDim,
-            fontSize: 11,
-            fontWeight: selected ? "600" : "500",
-          }}
-        >
-          {item.label}
-        </Text>
-      </Pressable>
+      </PressableScale>
     );
   };
 
   return (
-    <View style={styles.wrap}>
+    <View pointerEvents="box-none" style={styles.wrap}>
       <View style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {/* Each half is its own flex:1 row so the two sides are always equal.
             Letting all four tabs flex against one another instead let the wider
@@ -95,38 +85,39 @@ export default function BottomNav({
           the bar's top edge, which it cannot do as a flex child. box-none lets
           taps through the transparent strip either side of it. */}
       <View pointerEvents="box-none" style={styles.actionLayer}>
-        {/* Idle it is the app's own mark, or StudIn's when that mode is on, so
+        {/* Idle it is the app's own mark, or Cycle's when that mode is on, so
             the button says which session the next tap opens. A live session
             swaps it for the red X that starts the card-confirmed end flow; once
             scanning, the same X cancels that pending read. */}
-        <Pressable
+        <PressableScale
+          scaleTo={0.94}
           accessibilityRole="button"
           accessibilityLabel={
             scanning
               ? "Cancel card scan"
               : active
                 ? "End focus session"
-                : studIn
-                  ? "Start StudIn"
+                : cycle
+                  ? "Start Cycle"
                   : "Tap in"
           }
-          onPress={scanning ? onCancel : onTockIn}
+          onPress={scanning ? onCancel : onTafik}
           style={({ pressed }) => [
             styles.action,
             active || scanning
-              ? { backgroundColor: colors.danger, borderColor: colors.danger }
+              ? { backgroundColor: colors.accent, borderColor: colors.accent }
               : { backgroundColor: colors.bg, borderColor: colors.text },
             { opacity: pressed ? 0.85 : 1 },
           ]}
         >
           {active || scanning ? (
-            <X size={24} color={colors.onDanger} strokeWidth={2.6} />
-          ) : studIn ? (
+            <X size={24} color={colors.onAccent} strokeWidth={2.6} />
+          ) : cycle ? (
             <BookOpenCheck size={25} color={colors.text} strokeWidth={2.2} />
           ) : (
             <AppMark height={26} color={colors.text} />
           )}
-        </Pressable>
+        </PressableScale>
       </View>
     </View>
   );
@@ -134,12 +125,16 @@ export default function BottomNav({
 
 const styles = StyleSheet.create({
   wrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingBottom: space(2),
   },
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    height: 66,
+    height: BAR_HEIGHT,
     marginTop: ACTION_RISE,
     marginHorizontal: space(2),
     borderRadius: 26,
@@ -154,11 +149,10 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    // Without this a label wider than its share refuses to shrink and grows the
-    // tab instead, which is what pulled the bar out of balance.
     minWidth: 0,
+    minHeight: 48,
     alignItems: "center",
-    gap: space(0.5),
+    justifyContent: "center",
   },
   actionGap: {
     width: ACTION_SIZE + space(2),
@@ -176,9 +170,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    // Wide enough to read as an outline rather than a seam. It also does the
-    // separating work in light mode, where the page, the bar and this button
-    // are all the same white and the button would otherwise be only a shadow.
+    // Wide enough to read as an outline rather than a seam, so the button stays
+    // distinct from the bar it sits in.
     borderWidth: 1.5,
     elevation: 10,
   },

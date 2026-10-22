@@ -78,7 +78,7 @@ const SCREEN_TIME_COST: Record<ScreenTimeAnswer, string> = {
 };
 
 /** Where every version of the story lands, and what the card is for. */
-const CLOSING_LINE = "So we gave you an ending you can hold.";
+export const CLOSING_LINE = "So we gave you an ending you can hold.";
 
 /**
  * The story for a set of answers. Falls back to the doomscrolling opening and

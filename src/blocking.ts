@@ -7,7 +7,7 @@ export type AppScreenTime = { name: string; pkg: string; seconds: number };
 export type ScreenTimeDay = { date: string; seconds: number; apps: AppScreenTime[] };
 export type BlockingSessionState = {
   active: boolean;
-  mode: "none" | "tockin" | "studin";
+  mode: "none" | "tafik" | "cycle";
   phase: "study" | "break" | null;
   currentRound: number;
   totalRounds: number;
@@ -17,11 +17,11 @@ export type BlockingSessionState = {
   studyDurationSeconds: number;
   breakDurationSeconds: number;
 };
-export type StudInResult = { focusSeconds: number; completed: boolean };
+export type CycleResult = { focusSeconds: number; completed: boolean };
 
 type BlockingNativeModule = {
   startSession(blocklist: string[]): Promise<void>;
-  startStudInSession?(
+  startCycleSession?(
     blocklist: string[],
     studyDurationSeconds: number,
     breakDurationSeconds: number,
@@ -30,8 +30,7 @@ type BlockingNativeModule = {
   endSession(): Promise<void>;
   isSessionActive(): Promise<boolean>;
   getSessionState?(): Promise<BlockingSessionState>;
-  consumeStudInResult?(): Promise<StudInResult>;
-  setAppearanceMode?(mode: "system" | "light" | "dark"): Promise<void>;
+  consumeCycleResult?(): Promise<CycleResult>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
@@ -48,7 +47,7 @@ const native = requireOptionalNativeModule<BlockingNativeModule>("Blocking");
 function requireBlockingModule(): BlockingNativeModule {
   if (!native) {
     throw new Error(
-      "TockIn's blocker isn't available on this device. Please update TockIn to the latest version."
+      "Tafik's blocker isn't available on this device. Please update Tafik to the latest version."
     );
   }
   return native;
@@ -59,7 +58,7 @@ export async function startBlockingSession(blocklist: string[]): Promise<void> {
   await requireBlockingModule().startSession(blocklist);
 }
 
-export async function startStudInBlockingSession(
+export async function startCycleBlockingSession(
   blocklist: string[],
   studyMinutes: number,
   breakMinutes: number,
@@ -67,10 +66,10 @@ export async function startStudInBlockingSession(
 ): Promise<void> {
   if (blocklist.length === 0) throw new Error("Choose at least one app to block first.");
   const module = requireBlockingModule();
-  if (typeof module.startStudInSession !== "function") {
-    throw new Error("StudIn needs a newer native build of TockIn.");
+  if (typeof module.startCycleSession !== "function") {
+    throw new Error("Cycle needs a newer native build of Tafik.");
   }
-  await module.startStudInSession(
+  await module.startCycleSession(
     blocklist,
     Math.round(studyMinutes * 60),
     Math.round(breakMinutes * 60),
@@ -78,8 +77,8 @@ export async function startStudInBlockingSession(
   );
 }
 
-export function hasStudInSessionSupport(): boolean {
-  return typeof native?.startStudInSession === "function" &&
+export function hasCycleSessionSupport(): boolean {
+  return typeof native?.startCycleSession === "function" &&
     typeof native?.getSessionState === "function";
 }
 
@@ -108,13 +107,13 @@ export async function getBlockingSessionState(): Promise<BlockingSessionState> {
   if (!native) return INACTIVE_SESSION;
   if (typeof native.getSessionState !== "function") {
     const active = await native.isSessionActive();
-    return active ? { ...INACTIVE_SESSION, active: true, mode: "tockin" } : INACTIVE_SESSION;
+    return active ? { ...INACTIVE_SESSION, active: true, mode: "tafik" } : INACTIVE_SESSION;
   }
 
   const state = await native.getSessionState();
   return {
     active: Boolean(state.active),
-    mode: state.mode === "tockin" || state.mode === "studin" ? state.mode : "none",
+    mode: state.mode === "tafik" || state.mode === "cycle" ? state.mode : "none",
     phase: state.phase === "study" || state.phase === "break" ? state.phase : null,
     currentRound: Math.max(0, Math.round(Number(state.currentRound) || 0)),
     totalRounds: Math.max(0, Math.round(Number(state.totalRounds) || 0)),
@@ -126,17 +125,13 @@ export async function getBlockingSessionState(): Promise<BlockingSessionState> {
   };
 }
 
-export async function consumeStudInResult(): Promise<StudInResult> {
-  if (!native?.consumeStudInResult) return { focusSeconds: 0, completed: false };
-  const result = await native.consumeStudInResult();
+export async function consumeCycleResult(): Promise<CycleResult> {
+  if (!native?.consumeCycleResult) return { focusSeconds: 0, completed: false };
+  const result = await native.consumeCycleResult();
   return {
     focusSeconds: Math.max(0, Math.round(Number(result.focusSeconds) || 0)),
     completed: Boolean(result.completed),
   };
-}
-
-export async function syncBlockingAppearance(mode: "system" | "light" | "dark"): Promise<void> {
-  await native?.setAppearanceMode?.(mode);
 }
 
 export async function hasUsageAccess(): Promise<boolean> {
@@ -167,7 +162,7 @@ export function hasAccessibilityServiceSupport(): boolean {
 export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getAppScreenTimeToday !== "function") {
-    throw new Error("Screen-time details aren't available yet. Please update TockIn to the latest version.");
+    throw new Error("Screen-time details aren't available yet. Please update Tafik to the latest version.");
   }
   const raw = await native.getAppScreenTimeToday();
   const apps = JSON.parse(raw) as unknown;
@@ -199,7 +194,7 @@ export async function getAppScreenTimeToday(): Promise<AppScreenTime[] | null> {
 export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
   if (!native || !(await native.hasUsageAccess())) return null;
   if (typeof native.getScreenTimeInsights !== "function") {
-    throw new Error("Screen-time insights aren't available yet. Please update TockIn to the latest version.");
+    throw new Error("Screen-time insights aren't available yet. Please update Tafik to the latest version.");
   }
   const parsed = JSON.parse(await native.getScreenTimeInsights()) as {
     days?: { date?: unknown; milliseconds?: unknown; apps?: unknown }[];
@@ -233,7 +228,7 @@ export async function getScreenTimeInsights(): Promise<ScreenTimeDay[] | null> {
 export async function getInstalledApps(): Promise<InstalledApp[]> {
   const module = requireBlockingModule();
   if (typeof module.getInstalledAppsWithIcons !== "function") {
-    throw new Error("The app list isn't available yet. Please update TockIn to the latest version.");
+    throw new Error("The app list isn't available yet. Please update Tafik to the latest version.");
   }
   const parsed = JSON.parse(await module.getInstalledAppsWithIcons()) as unknown;
   if (!Array.isArray(parsed)) throw new Error("Couldn't read your installed apps. Please try again.");

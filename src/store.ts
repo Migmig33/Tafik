@@ -17,20 +17,31 @@ const KEYS = {
   blocklist: "blocklist", // array of package names
   sessions: "sessions", // array of completed session records
   activeSessionStartedAt: "activeSessionStartedAt", // epoch milliseconds
-  studInConfig: "studInConfig", // study minutes, break minutes, and rounds
-  focusMode: "focusMode", // "tockin" or "studin"
+  cycleConfig: "cycleConfig", // study minutes, break minutes, and rounds
+  focusMode: "focusMode", // "tafik" or "cycle"
   emergencyUnlocks: "emergencyUnlocks", // { m: "YYYY-MM", n: uses this month }
   guidesSeen: "guidesSeen", // screens whose first-visit walkthrough has been shown
   welcomeAnswers: "welcomeAnswers", // the two first-run questions
+  themeMode: "themeMode", // "dark" or "light"; absent means dark
 } as const;
 
 // Keys earlier builds wrote that nothing reads any more. A phone that used one
 // of those builds would otherwise keep the data of a removed feature for as
 // long as the app stays installed.
-const RETIRED_KEYS = ["shieldMessage"];
+const RETIRED_KEYS = ["shieldMessage", "tutorialStep"];
 
 export async function purgeRetiredKeys(): Promise<void> {
   await AsyncStorage.multiRemove(RETIRED_KEYS);
+}
+
+// The appearance the user chose. Null when they have never chosen, which means dark.
+export async function getThemeMode(): Promise<"dark" | "light" | null> {
+  const raw = await AsyncStorage.getItem(KEYS.themeMode);
+  return raw === "light" || raw === "dark" ? raw : null;
+}
+
+export async function setThemeMode(mode: "dark" | "light"): Promise<void> {
+  await AsyncStorage.setItem(KEYS.themeMode, mode);
 }
 
 export async function getOnboardingDone(): Promise<boolean> {
@@ -145,59 +156,59 @@ export async function clearActiveSessionStartedAt(): Promise<void> {
 }
 
 /**
- * Which session a card tap starts. "tockin" is the standard open-ended session
+ * Which session a card tap starts. "tafik" is the standard open-ended session
  * that runs until a card ends it, and is what the app does when no extra mode
- * is switched on. "studin" is the timed study/break cycle. Strict Mode is
+ * is switched on. "cycle" is the timed study/break cycle. Strict Mode is
  * announced in Settings as a stricter version of each of these rather than a
  * mode of its own, so it will not add a value here when it ships.
  */
-export type FocusMode = "tockin" | "studin";
+export type FocusMode = "tafik" | "cycle";
 
 export async function getFocusMode(): Promise<FocusMode> {
-  return (await AsyncStorage.getItem(KEYS.focusMode)) === "studin" ? "studin" : "tockin";
+  return (await AsyncStorage.getItem(KEYS.focusMode)) === "cycle" ? "cycle" : "tafik";
 }
 
 export async function setFocusMode(mode: FocusMode): Promise<void> {
   await AsyncStorage.setItem(KEYS.focusMode, mode);
 }
 
-export type StudInConfig = {
+export type CycleConfig = {
   studyMinutes: number;
   breakMinutes: number;
   rounds: number;
 };
 
-export const DEFAULT_STUDIN_CONFIG: StudInConfig = {
+export const DEFAULT_CYCLE_CONFIG: CycleConfig = {
   studyMinutes: 25,
   breakMinutes: 5,
   rounds: 4,
 };
 
-function normalizeStudInConfig(value: Partial<StudInConfig>): StudInConfig {
+function normalizeCycleConfig(value: Partial<CycleConfig>): CycleConfig {
   const whole = (input: unknown, fallback: number, min: number, max: number) => {
     const parsed = typeof input === "number" ? input : Number(input);
     return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
   };
   return {
-    studyMinutes: whole(value.studyMinutes, DEFAULT_STUDIN_CONFIG.studyMinutes, 1, 180),
-    breakMinutes: whole(value.breakMinutes, DEFAULT_STUDIN_CONFIG.breakMinutes, 1, 60),
-    rounds: whole(value.rounds, DEFAULT_STUDIN_CONFIG.rounds, 1, 12),
+    studyMinutes: whole(value.studyMinutes, DEFAULT_CYCLE_CONFIG.studyMinutes, 1, 180),
+    breakMinutes: whole(value.breakMinutes, DEFAULT_CYCLE_CONFIG.breakMinutes, 1, 60),
+    rounds: whole(value.rounds, DEFAULT_CYCLE_CONFIG.rounds, 1, 12),
   };
 }
 
-export async function getStudInConfig(): Promise<StudInConfig> {
-  const raw = await AsyncStorage.getItem(KEYS.studInConfig);
-  if (!raw) return DEFAULT_STUDIN_CONFIG;
+export async function getCycleConfig(): Promise<CycleConfig> {
+  const raw = await AsyncStorage.getItem(KEYS.cycleConfig);
+  if (!raw) return DEFAULT_CYCLE_CONFIG;
   try {
-    return normalizeStudInConfig(JSON.parse(raw) as Partial<StudInConfig>);
+    return normalizeCycleConfig(JSON.parse(raw) as Partial<CycleConfig>);
   } catch {
-    return DEFAULT_STUDIN_CONFIG;
+    return DEFAULT_CYCLE_CONFIG;
   }
 }
 
-export async function setStudInConfig(config: StudInConfig): Promise<StudInConfig> {
-  const normalized = normalizeStudInConfig(config);
-  await AsyncStorage.setItem(KEYS.studInConfig, JSON.stringify(normalized));
+export async function setCycleConfig(config: CycleConfig): Promise<CycleConfig> {
+  const normalized = normalizeCycleConfig(config);
+  await AsyncStorage.setItem(KEYS.cycleConfig, JSON.stringify(normalized));
   return normalized;
 }
 
@@ -206,7 +217,17 @@ export async function setStudInConfig(config: StudInConfig): Promise<StudInConfi
 // This is focus time the app measured itself. Device-wide screen time is a
 // different thing entirely and needs UsageStatsManager (see NATIVE.md).
 
-export type SessionRecord = { d: string; s: number };
+// Only a completed session of at least five minutes earns its day (q). Shorter
+// or abandoned sessions still add focus time, but they never count toward the
+// streak.
+export const QUALIFYING_SESSION_SECONDS = 5 * 60;
+
+// m (mode), c (completed) and r (rounds in a Tempo cycle) are written for sessions
+// recorded from this version on. Older records simply lack them, and nothing that
+// needs them offers a session card for those.
+export type SessionRecord = { d: string; s: number; q?: boolean; m?: FocusMode; c?: boolean; r?: number };
+
+export type SessionDetails = { mode: FocusMode; rounds?: number };
 
 export function todayKey(now = new Date()): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -224,16 +245,32 @@ export async function getSessions(): Promise<SessionRecord[]> {
 }
 
 /** Append a finished session. Sessions under 5s are ignored as mis-taps. */
-export async function recordSession(seconds: number): Promise<void> {
+export async function recordSession(
+  seconds: number,
+  completed: boolean,
+  details?: SessionDetails
+): Promise<void> {
   if (seconds < 5) return;
   const all = await getSessions();
-  all.push({ d: todayKey(), s: Math.round(seconds) });
+  const record: SessionRecord = { d: todayKey(), s: Math.round(seconds) };
+  if (completed && seconds >= QUALIFYING_SESSION_SECONDS) record.q = true;
+  if (details) {
+    record.m = details.mode;
+    record.c = completed;
+    if (details.rounds !== undefined) record.r = details.rounds;
+  }
+  all.push(record);
   // Keep the log bounded — 400 sessions is well over a year of daily use.
   const trimmed = all.slice(-400);
   await AsyncStorage.setItem(KEYS.sessions, JSON.stringify(trimmed));
 }
 
-export type TodayStats = { seconds: number; count: number; streak: number };
+/** Local dates that earned the streak. The one source both the count and the week use. */
+function qualifyingDayKeys(all: SessionRecord[]): Set<string> {
+  return new Set(all.filter((r) => r.q === true).map((r) => r.d));
+}
+
+export type TodayStats = { seconds: number; count: number; streak: number; doneToday: boolean };
 
 export async function getTodayStats(): Promise<TodayStats> {
   const all = await getSessions();
@@ -241,7 +278,7 @@ export async function getTodayStats(): Promise<TodayStats> {
   const today = all.filter((r) => r.d === key);
 
   // Streak: count back day by day while each day has at least one session.
-  const days = new Set(all.map((r) => r.d));
+  const days = qualifyingDayKeys(all);
   let streak = 0;
   const cursor = new Date();
   while (days.has(todayKey(cursor))) {
@@ -253,7 +290,39 @@ export async function getTodayStats(): Promise<TodayStats> {
     seconds: today.reduce((sum, r) => sum + r.s, 0),
     count: today.length,
     streak,
+    // Today has earned the streak: the same history the count is read from.
+    doneToday: days.has(key),
   };
+}
+
+export type StreakDay = {
+  key: string;
+  label: string;
+  earned: boolean;
+  isToday: boolean;
+  isFuture: boolean;
+};
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * The current calendar week, Sunday first. Each day is earned only if its own
+ * date has a qualifying session, and a future date is never earned.
+ */
+export async function getStreakWeek(now = new Date()): Promise<StreakDay[]> {
+  const earned = qualifyingDayKeys(await getSessions());
+  const today = todayKey(now);
+  const sunday = now.getDate() - now.getDay();
+  return WEEKDAY_LABELS.map((label, index) => {
+    const key = todayKey(new Date(now.getFullYear(), now.getMonth(), sunday + index));
+    return {
+      key,
+      label,
+      earned: key <= today && earned.has(key),
+      isToday: key === today,
+      isFuture: key > today,
+    };
+  });
 }
 
 // --- Emergency unlocks -----------------------------------------------------
@@ -375,11 +444,6 @@ export async function markGuideSeen(key: string): Promise<void> {
   const seen = await getSeenGuides();
   if (seen.includes(key)) return;
   await AsyncStorage.setItem(KEYS.guidesSeen, JSON.stringify([...seen, key]));
-}
-
-/** Forget every walkthrough so each tab introduces itself again on the next visit. */
-export async function resetGuides(): Promise<void> {
-  await AsyncStorage.removeItem(KEYS.guidesSeen);
 }
 
 // --- First-run questions ---------------------------------------------------

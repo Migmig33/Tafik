@@ -1,4 +1,4 @@
-package com.kupdevs.tockin
+package com.kupdevs.tafik
 
 import android.os.Build
 import android.os.Bundle

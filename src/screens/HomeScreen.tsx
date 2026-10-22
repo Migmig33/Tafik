@@ -1,35 +1,40 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, ScrollView, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import BookOpenCheck from "lucide-react-native/icons/book-open-check";
-import Coffee from "lucide-react-native/icons/coffee";
 import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
-import Minus from "lucide-react-native/icons/minus";
-import Plus from "lucide-react-native/icons/plus";
+import LockKeyholeOpen from "lucide-react-native/icons/lock-keyhole-open";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import Timer from "lucide-react-native/icons/timer";
-import TimerReset from "lucide-react-native/icons/timer-reset";
 import {
   AnimatedSwapText,
-  AppMark,
   Body,
-  GhostButton,
   Screen,
-  TapRipple,
+  StreakWeek,
   Title,
 } from "../components";
-import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
+import { GuideSheet, useScreenGuide } from "../guides";
 import { Nav } from "../nav";
+import LastSessionCard from "../lastSessionCard";
+import NfcCardShowcase from "../nfcCardShowcase";
+import { newestSessionCard, SessionCardFacts, SessionCardModal } from "../sessionCard";
+import { CycleWheels, type ActiveWheel } from "../wheelPicker";
 import {
-  DEFAULT_STUDIN_CONFIG,
+  DEFAULT_CYCLE_CONFIG,
   type FocusMode,
-  getStudInConfig,
+  getCycleConfig,
+  getRegisteredCards,
+  getSessions,
+  getStreakWeek,
   getTodayStats,
-  setStudInConfig,
-  type StudInConfig,
+  setCycleConfig,
+  type CycleConfig,
+  type RegisteredCard,
+  type StreakDay,
   TodayStats,
 } from "../store";
-import { radius, space, useTheme } from "../theme";
+import { colors, space, typeScale } from "../theme";
+import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
+import { NAV_CLEARANCE } from "../tabBar";
 import { Text } from "../typography";
 
 function fmt(totalSec: number): string {
@@ -54,9 +59,6 @@ export default function HomeScreen({
   startedAt,
   blockCount,
   focusMode,
-  scanning,
-  onTockIn,
-  onStartWithoutCard,
 }: {
   nav: Nav;
   active: boolean;
@@ -65,38 +67,53 @@ export default function HomeScreen({
   /** Which session the next card tap opens. Owned by the app shell so the tab
       bar's centre button and this screen's circle never disagree. */
   focusMode: FocusMode;
-  /** Which read is open, if any. The scan itself is owned by the app shell,
-      because the button that starts it now lives in the tab bar. */
-  scanning: null | "start" | "end";
-  /** Arm the reader. The same action the tab bar's centre button runs. */
-  onTockIn: () => void;
-  /** Start the session without reading a card, behind a confirmation. Offered
-      only while a start read is open, so it is never the first thing pressed. */
-  onStartWithoutCard: () => void;
 }) {
-  const { colors } = useTheme();
+  const edge = useScrollEdge();
   const guide = useScreenGuide("home");
   const [now, setNow] = useState(Date.now());
-  const [stats, setStats] = useState<TodayStats>({ seconds: 0, count: 0, streak: 0 });
-  const [studIn, setStudIn] = useState<StudInConfig>(DEFAULT_STUDIN_CONFIG);
-  const studInMode = focusMode === "studin";
+  const [stats, setStats] = useState<TodayStats>({ seconds: 0, count: 0, streak: 0, doneToday: false });
+  const [week, setWeek] = useState<StreakDay[]>([]);
+  const [cycle, setCycle] = useState<CycleConfig>(DEFAULT_CYCLE_CONFIG);
+  const [activeWheel, setActiveWheel] = useState<ActiveWheel>("study");
+  // The registered cards the showcase shows, and the newest completed session to share.
+  const [cards, setCards] = useState<RegisteredCard[]>([]);
+  const [lastCard, setLastCard] = useState<SessionCardFacts | null>(null);
+  const [openCard, setOpenCard] = useState<SessionCardFacts | null>(null);
+  const cycleMode = focusMode === "cycle";
 
   // Refresh stats whenever we return to the idle state (i.e. a session ended).
+  // The week is read from the same history, so it is refreshed at the same time.
+  const refreshStreak = () => {
+    getTodayStats().then(setStats);
+    getStreakWeek().then(setWeek);
+    getRegisteredCards().then(setCards);
+    getSessions().then((all) => setLastCard(newestSessionCard(all)));
+  };
+
   useEffect(() => {
-    if (!active) getTodayStats().then(setStats);
+    if (!active) refreshStreak();
+  }, [active]);
+
+  // A qualifying session can also end while the app is in the background, and
+  // the day may roll over overnight, so the idle view re-reads on every return.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && !active) refreshStreak();
+    });
+    return () => sub.remove();
   }, [active]);
 
   // Home is unmounted whenever another tab is showing, so a plain mount read is
   // enough to pick up a schedule edited elsewhere.
   useEffect(() => {
-    getStudInConfig().then(setStudIn);
+    getCycleConfig().then(setCycle);
   }, []);
 
   // Written straight through on every step: the card that starts the cycle
   // reads this from storage, and it may be tapped the moment a number changes.
-  const updateStudIn = (next: StudInConfig) => {
-    setStudIn(next);
-    void setStudInConfig(next);
+  const updateCycle = (next: CycleConfig) => {
+    setCycle(next);
+    void setCycleConfig(next);
   };
 
   useEffect(() => {
@@ -107,21 +124,68 @@ export default function HomeScreen({
 
   if (active) {
     const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
-    const waiting = scanning === "end";
     return (
       <Screen>
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+        <View style={{ flex: 1 }}>
+          <ScrollView {...edge.scrollProps} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.homeHeader}>
+              <AnimatedSwapText value="Tafik">
+                {(label) => <Title>{label}</Title>}
+              </AnimatedSwapText>
+              <View style={styles.headerActions}>
+                <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
+                  <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
+                  <AnimatedSwapText value="Session active">
+                    {(label) => (
+                      <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>
+                        {label}
+                      </Text>
+                    )}
+                  </AnimatedSwapText>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.focusCluster}>
+              <View style={styles.activeFocusContent}>
+                <Text
+                  accessibilityLabel={`Focus time ${fmt(elapsed)}`}
+                  style={[styles.activeTimer, { color: colors.text }]}
+                >
+                  {fmt(elapsed)}
+                </Text>
+                <Body dim>{blockCount} apps blocked</Body>
+              </View>
+            </View>
+
+            <View style={{ height: NAV_CLEARANCE }} />
+          </ScrollView>
+          <ScrollEdgeFade visible={edge.visible} />
+        </View>
+
+        <GuideSheet guide="home" visible={guide.visible} onClose={guide.close} />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <View style={{ flex: 1 }}>
+        <ScrollView {...edge.scrollProps} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
           <View style={styles.homeHeader}>
-            <AnimatedSwapText value="TockedIn">
+            <AnimatedSwapText value="Tafik">
               {(label) => <Title>{label}</Title>}
             </AnimatedSwapText>
             <View style={styles.headerActions}>
-              <GuideButton label="Home" onPress={guide.open} />
               <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-                <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
-                <AnimatedSwapText value={waiting ? "Ready to scan" : "Session active"}>
+                {stats.doneToday ? (
+                  <LockKeyhole size={17} color={colors.text} strokeWidth={2.3} />
+                ) : (
+                  <LockKeyholeOpen size={17} color={colors.textDim} strokeWidth={2.3} />
+                )}
+                <AnimatedSwapText value={`${stats.streak}`}>
                   {(label) => (
-                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                    <Text style={{ color: stats.doneToday ? colors.text : colors.textDim, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>
                       {label}
                     </Text>
                   )}
@@ -130,240 +194,82 @@ export default function HomeScreen({
             </View>
           </View>
 
-          {/* The active mark keeps Home's exact circle size. Arming the reader
-              turns on the same expanding rings used by the start-card scan. */}
-          <View style={styles.focusCluster}>
-            <View style={styles.activeFocusContent}>
-              <TapRipple active={waiting} size={184} coreSize={116}>
-                <AppMark height={72} color={colors.text} />
-              </TapRipple>
-              <Text
-                accessibilityLabel={`Focus time ${fmt(elapsed)}`}
-                style={[styles.activeTimer, { color: colors.text }]}
-              >
-                {fmt(elapsed)}
-              </Text>
-              <Body dim>{blockCount} apps blocked</Body>
-              {waiting ? (
-                <Text style={[styles.scanInstruction, { color: colors.textDim }]}>
-                  Hold your card to the back of your phone.
-                </Text>
-              ) : null}
-            </View>
+          <View style={{ marginTop: space(2) }}>
+            <StreakWeek days={week} />
           </View>
 
-          {/* Ending and cancelling live in the centre tab-bar button. */}
-          <GhostButton label="Card lost? Emergency unlock" onPress={() => nav("emergency")} />
-        </ScrollView>
-
-        <GuideSheet guide="home" visible={guide.visible} onClose={guide.close} />
-      </Screen>
-    );
-  }
-
-  const waiting = scanning === "start";
-
-  return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        <View style={styles.homeHeader}>
-          <AnimatedSwapText value="TockIn">
-            {(label) => <Title>{label}</Title>}
-          </AnimatedSwapText>
-          <View style={styles.headerActions}>
-            <GuideButton label="Home" onPress={guide.open} />
-            <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-              <LockKeyhole size={17} color={colors.accent} strokeWidth={2.3} />
-              <AnimatedSwapText
-                value={`${stats.streak} ${stats.streak === 1 ? "day" : "days"}`}
-              >
-                {(label) => (
-                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-                    {label}
-                  </Text>
-                )}
-              </AnimatedSwapText>
-            </View>
+          {/* The registered card sits directly under the streak, as the first thing
+              the user taps against. */}
+          <View style={{ marginTop: space(2.5) }}>
+            <NfcCardShowcase cards={cards} onRegister={() => nav("cardSetup")} />
           </View>
-        </View>
 
-        {/* Ripple and caption are one unit: the gap holds them together so the
-            circle reads as the thing the words are about. The pressable wraps
-            only that unit, not the centring box around it, so a tap in the
-            empty space either side cannot arm the reader by accident. */}
-        <View style={styles.focusCluster}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={studInMode ? "Tap in to start StudIn" : "Tap in to begin"}
-            accessibilityState={{ disabled: waiting }}
-            onPress={onTockIn}
-            disabled={waiting}
-            style={({ pressed }) => [styles.focusTarget, { opacity: pressed ? 0.68 : 1 }]}
-          >
-            {/* The same bare circle in both modes. StudIn's mark belongs to a
-                running cycle, not to the thing that starts one, so nothing sits
-                inside until blocking is actually live. */}
-            <TapRipple active={waiting} size={184} coreSize={116} />
-            <Text
-              style={{
-                color: waiting ? colors.accent : colors.text,
-                fontSize: 20,
-                fontWeight: "600",
-              }}
-            >
-              {/* StudIn is named here rather than left to the tab bar icon,
-                  because it is the mode a card cannot end once Study starts.
-                  The button that begins it should say which one it is. */}
-              {waiting ? "Ready to scan" : studInMode ? "Tap in to start StudIn" : "Tap in to begin"}
-            </Text>
-            <Body dim>
-              {waiting
-                ? "Hold your card to the back of your phone."
-                : `${blockCount} apps will be locked.`}
-            </Body>
-          </Pressable>
+          <View style={{ height: space(2) }} />
 
-          {/* Outside the circle's pressable, so the tap that reaches it can
-              never also be the tap that armed the reader. */}
-          {waiting ? (
-            <View style={styles.withoutCard}>
-              <GhostButton label="Start without card" onPress={onStartWithoutCard} />
-            </View>
-          ) : null}
-        </View>
-
-        {/* StudIn takes this slot rather than sitting beside the day's totals:
-            the schedule is what the next card tap will run, so it belongs where
-            the eye lands before tapping. The totals return with the mode off. */}
-        {studInMode ? (
-          <>
-            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>StudIn schedule</Text>
-            <View style={[styles.studInCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <DurationControl
-                icon={BookOpenCheck}
-                label="Study"
-                value={studIn.studyMinutes}
-                suffix="min"
-                min={1}
-                max={180}
-                onChange={(studyMinutes) => updateStudIn({ ...studIn, studyMinutes })}
-              />
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <DurationControl
-                icon={Coffee}
-                label="Break"
-                value={studIn.breakMinutes}
-                suffix="min"
-                min={1}
-                max={60}
-                onChange={(breakMinutes) => updateStudIn({ ...studIn, breakMinutes })}
-              />
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <DurationControl
-                icon={Repeat2}
-                label="Rounds"
-                value={studIn.rounds}
-                min={1}
-                max={12}
-                onChange={(rounds) => updateStudIn({ ...studIn, rounds })}
-              />
-              <View style={[styles.studInSummary, { borderColor: colors.border }]}>
-                <TimerReset size={17} color={colors.textDim} strokeWidth={2} />
-                <Text style={{ color: colors.textDim, fontSize: 13, flex: 1 }}>
-                  {studIn.rounds * studIn.studyMinutes} min Study,{" "}
-                  {Math.max(0, studIn.rounds - 1) * studIn.breakMinutes} min Break
-                </Text>
+          {/* Cycle takes this slot rather than sitting beside the day's totals:
+              the schedule is what the next card tap will run, so it belongs where
+              the eye lands before tapping. The totals return with the mode off. */}
+          {cycleMode ? (
+            <>
+              <View style={styles.cycleBody}>
+                <View style={styles.topArea}>
+                  <CycleWheels
+                    part="top"
+                    study={cycle.studyMinutes}
+                    breakMinutes={cycle.breakMinutes}
+                    cycles={cycle.rounds}
+                    onChange={updateCycle}
+                    active={activeWheel}
+                    onActivate={setActiveWheel}
+                  />
+                </View>
               </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Today&apos;s TockedIn</Text>
-            <View style={styles.metricsRow}>
-              <FocusMetric icon={Timer} label="Focused" value={human(stats.seconds)} />
-              <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
-            </View>
-          </>
-        )}
-      </ScrollView>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Today&apos;s Tafik</Text>
+              <View style={styles.metricsRow}>
+                <FocusMetric icon={Timer} label="Focused" value={human(stats.seconds)} />
+                <FocusMetric icon={Repeat2} label="Sessions" value={String(stats.count)} />
+              </View>
+              {/* Share Session sits directly below Today's Tafik. It only appears once a
+                  completed session exists to share. */}
+              <View style={{ marginTop: space(1.5) }}>
+                <LastSessionCard facts={lastCard} onShare={() => setOpenCard(lastCard)} />
+              </View>
+              <SessionCardModal facts={openCard} onClose={() => setOpenCard(null)} />
+            </>
+          )}
+          <View style={{ height: NAV_CLEARANCE }} />
+        </ScrollView>
+        <ScrollEdgeFade visible={edge.visible} />
+        {cycleMode ? (
+          <View pointerEvents="box-none" style={styles.cycleFloor}>
+            <CycleWheels
+              part="bottom"
+              study={cycle.studyMinutes}
+              breakMinutes={cycle.breakMinutes}
+              cycles={cycle.rounds}
+              onChange={updateCycle}
+              active={activeWheel}
+              onActivate={setActiveWheel}
+            />
+          </View>
+        ) : null}
+      </View>
 
       <GuideSheet guide="home" visible={guide.visible} onClose={guide.close} />
     </Screen>
   );
 }
 
-/**
- * A stepper for one StudIn number. StudIn is deliberately custom-only: presets
- * were dropped so the schedule is always the one the user chose rather than a
- * name they have to translate.
- */
-function DurationControl({
-  icon: Icon,
-  label,
-  value,
-  suffix,
-  min,
-  max,
-  onChange,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: number;
-  suffix?: string;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  const { colors } = useTheme();
-  const button = (direction: -1 | 1) => {
-    const disabled = direction < 0 ? value <= min : value >= max;
-    const ActionIcon = direction < 0 ? Minus : Plus;
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${direction < 0 ? "Decrease" : "Increase"} ${label}`}
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPress={() => onChange(Math.min(max, Math.max(min, value + direction)))}
-        style={({ pressed }) => [
-          styles.stepButton,
-          {
-            borderColor: colors.border,
-            backgroundColor: colors.bg,
-            opacity: disabled ? 0.35 : pressed ? 0.6 : 1,
-          },
-        ]}
-      >
-        <ActionIcon size={18} color={colors.text} strokeWidth={2.2} />
-      </Pressable>
-    );
-  };
-
-  return (
-    <View style={styles.controlRow}>
-      <View style={[styles.controlIcon, { backgroundColor: colors.accentWash }]}>
-        <Icon size={20} color={colors.accent} strokeWidth={2.1} />
-      </View>
-      <Text style={[styles.controlLabel, { color: colors.text }]}>{label}</Text>
-      {button(-1)}
-      <Text style={[styles.controlValue, { color: colors.text }]}>
-        {value}
-        {suffix ? ` ${suffix}` : ""}
-      </Text>
-      {button(1)}
-    </View>
-  );
-}
-
-
 /** One cell in the stats row. Numbers use tabular figures so they don't jitter. */
 function FocusMetric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  const { colors } = useTheme();
   return (
     <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.metricHeader}>
         <Icon size={16} color={colors.accent} strokeWidth={2.2} />
-        <Text style={{ color: colors.textDim, fontSize: 13 }}>{label}</Text>
+        <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize }}>{label}</Text>
       </View>
       <Text style={[styles.metricValue, { color: colors.text }]}>{value}</Text>
     </View>
@@ -395,87 +301,47 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  focusTarget: {
-    alignItems: "center",
-    gap: space(1),
-  },
-  // Held well clear of the circle: this is the path that locks the phone
-  // without a key in hand, so it should never be reachable by a near miss.
-  withoutCard: {
-    marginTop: space(3),
-  },
   activeFocusContent: {
     alignItems: "center",
   },
   activeTimer: {
     marginTop: space(1),
-    fontSize: 44,
+    fontSize: typeScale.display.fontSize,
     lineHeight: 54,
     fontVariant: ["tabular-nums"],
     fontWeight: "600",
     letterSpacing: 0.5,
   },
-  scanInstruction: {
-    marginTop: space(1),
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: "center",
-  },
   sectionLabel: {
-    fontSize: 11,
+    ...typeScale.label,
     fontWeight: "600",
-    letterSpacing: 0.8,
     marginBottom: space(1),
   },
-  studInCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
-    overflow: "hidden",
+  cycleBody: {
+    flex: 1,
+    gap: space(1),
+  },
+  // The Study and Break wheels sit in the middle of the space above the Cycle row.
+  topArea: {
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: space(7),
+  },
+  cycleFloor: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: NAV_CLEARANCE,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
   },
-  controlRow: {
-    minHeight: 74,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space(1.25),
-    paddingHorizontal: space(1.5),
-  },
-  controlIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  controlLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  controlValue: {
-    width: 66,
-    textAlign: "center",
-    fontSize: 15,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-  },
-  stepButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  studInSummary: {
+  cycleSummary: {
     flexDirection: "row",
     alignItems: "center",
     gap: space(1),
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: space(1.5),
-    paddingVertical: space(1.25),
+    paddingHorizontal: space(0.5),
+    paddingVertical: space(0.5),
   },
   metricsRow: {
     flexDirection: "row",
@@ -502,7 +368,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   metricValue: {
-    fontSize: 19,
+    fontSize: typeScale.headline.fontSize,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
     letterSpacing: -0.3,

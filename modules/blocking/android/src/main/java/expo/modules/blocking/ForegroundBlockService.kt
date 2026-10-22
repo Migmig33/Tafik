@@ -45,7 +45,7 @@ private data class OverlayPalette(
   val onAccent: Int
 )
 
-/** Small code-drawn icon so the native overlay matches TockIn without legacy Android icons. */
+/** Small code-drawn icon so the native overlay matches Tafik without legacy Android icons. */
 private class LockBadgeView(
   context: Context,
   private val fillColor: Int,
@@ -114,7 +114,7 @@ class ForegroundBlockService : Service() {
       // Break releases restrictions, while this service remains alive to
       // reapply them when the next Study begins. Foreground tracking continues
       // here so an app opened early in a long Break is still known at 00:00.
-      if (session.mode == BlockingPreferences.MODE_STUDIN &&
+      if (session.mode == BlockingPreferences.MODE_CYCLE &&
         session.phase == BlockingPreferences.PHASE_BREAK
       ) {
         clearUnshieldCandidate()
@@ -134,7 +134,7 @@ class ForegroundBlockService : Service() {
         }
         overlay == null -> clearUnshieldCandidate()
         foreground == packageName -> {
-          // TockIn must become usable immediately so the user can scan to end
+          // Tafik must become usable immediately so the user can scan to end
           // the session. Other app transitions are confirmed below.
           clearUnshieldCandidate()
           hideShield()
@@ -231,9 +231,9 @@ class ForegroundBlockService : Service() {
     } catch (_: Exception) {
       packageManager.getApplicationIcon(packageName)
     }
-    val palette = overlayPalette(BlockingPreferences.isDarkAppearance(this))
+    val palette = overlayPalette()
     val session = BlockingPreferences.sessionState(this)
-    val studInStudy = session.mode == BlockingPreferences.MODE_STUDIN &&
+    val cycleStudy = session.mode == BlockingPreferences.MODE_CYCLE &&
       session.phase == BlockingPreferences.PHASE_STUDY
 
     val root = LinearLayout(this).apply {
@@ -247,7 +247,7 @@ class ForegroundBlockService : Service() {
       gravity = Gravity.CENTER_VERTICAL
     }
     header.addView(
-      makeText("TockIn", 26f, palette.text, semibold = true),
+      makeText("Tafik", 26f, palette.text, semibold = true),
       LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     )
     header.addView(makeText("●  FOCUS ACTIVE", 11f, palette.accent, semibold = true).apply {
@@ -332,7 +332,7 @@ class ForegroundBlockService : Service() {
       setPadding(dp(16), dp(16), dp(16), dp(16))
       background = roundedBackground(palette.accentWash, 16)
     }
-    instruction.addView(makeText(if (studInStudy) "LOCK" else "NFC", 11f, palette.onAccent, semibold = true).apply {
+    instruction.addView(makeText(if (cycleStudy) "LOCK" else "NFC", 11f, palette.onAccent, semibold = true).apply {
       gravity = Gravity.CENTER
       background = roundedBackground(palette.accent, 100)
     }, LinearLayout.LayoutParams(dp(46), dp(46)))
@@ -341,16 +341,16 @@ class ForegroundBlockService : Service() {
       setPadding(dp(14), 0, 0, 0)
     }
     instructionCopy.addView(makeText(
-      if (studInStudy) "StudIn is running" else "Ready to unlock?",
+      if (cycleStudy) "Cycle is running" else "Ready to unlock?",
       14f,
       palette.text,
       semibold = true
     ))
     instructionCopy.addView(makeText(
-      if (studInStudy) {
+      if (cycleStudy) {
         "This app stays blocked until Study reaches 00:00."
       } else {
-        "Open TockIn, then tap your NFC card."
+        "Open Tafik, then tap your NFC card."
       },
       13f,
       palette.textDim
@@ -372,7 +372,7 @@ class ForegroundBlockService : Service() {
     val buttonFill = roundedBackground(palette.accent, 100)
     val rippleColor = (palette.onAccent and 0x00FFFFFF) or (40 shl 24)
     card.addView(makeText(
-      if (studInStudy) "Return to StudIn" else "Return to TockIn",
+      if (cycleStudy) "Return to Cycle" else "Return to Tafik",
       16f,
       palette.onAccent,
       semibold = true
@@ -382,7 +382,7 @@ class ForegroundBlockService : Service() {
       isClickable = true
       isFocusable = true
       background = RippleDrawable(ColorStateList.valueOf(rippleColor), buttonFill, null)
-      setOnClickListener { returnToTockIn() }
+      setOnClickListener { returnToTafik() }
     }, LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
       LinearLayout.LayoutParams.WRAP_CONTENT
@@ -393,7 +393,7 @@ class ForegroundBlockService : Service() {
       LinearLayout.LayoutParams.WRAP_CONTENT
     ))
     center.addView(makeText(
-      if (studInStudy) {
+      if (cycleStudy) {
         "Study ${session.currentRound} of ${session.totalRounds} is still running"
       } else {
         "Your focus session is still running"
@@ -474,29 +474,16 @@ class ForegroundBlockService : Service() {
 
   // Mirrors src/theme.ts exactly. The two copies have to be changed together
   // or the shield stops looking like the app that put it there.
-  private fun overlayPalette(dark: Boolean): OverlayPalette = if (dark) {
-    OverlayPalette(
-      background = Color.parseColor("#101010"),
-      surface = Color.parseColor("#1A1A1A"),
-      text = Color.parseColor("#F5F5F5"),
-      textDim = Color.parseColor("#A1A1A1"),
-      border = Color.parseColor("#2E2E2E"),
-      accent = Color.parseColor("#F5F5F5"),
-      accentWash = Color.parseColor("#262626"),
-      onAccent = Color.parseColor("#101010")
-    )
-  } else {
-    OverlayPalette(
-      background = Color.WHITE,
-      surface = Color.WHITE,
-      text = Color.parseColor("#1A1A1A"),
-      textDim = Color.parseColor("#737373"),
-      border = Color.parseColor("#E8E8E8"),
-      accent = Color.parseColor("#1A1A1A"),
-      accentWash = Color.parseColor("#F2F2F2"),
-      onAccent = Color.WHITE
-    )
-  }
+  private fun overlayPalette(): OverlayPalette = OverlayPalette(
+    background = Color.BLACK,
+    surface = Color.parseColor("#1A1A1A"),
+    text = Color.WHITE,
+    textDim = Color.argb(163, 255, 255, 255),
+    border = Color.argb(36, 255, 255, 255),
+    accent = Color.WHITE,
+    accentWash = Color.argb(20, 255, 255, 255),
+    onAccent = Color.BLACK
+  )
 
   private fun hideShield() {
     overlay?.let {
@@ -515,7 +502,7 @@ class ForegroundBlockService : Service() {
     unshieldCandidateSince = 0L
   }
 
-  private fun returnToTockIn() {
+  private fun returnToTafik() {
     hideShield()
     packageManager.getLaunchIntentForPackage(packageName)?.let {
       it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -527,7 +514,7 @@ class ForegroundBlockService : Service() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val channel = NotificationChannel(
       CHANNEL_ID,
-      "TockIn focus session",
+      "Tafik focus session",
       NotificationManager.IMPORTANCE_LOW
     ).apply {
       description = "Keeps app locking active during a focus session."
@@ -540,18 +527,18 @@ class ForegroundBlockService : Service() {
     val title: String
     val detail: String
     when {
-      session.mode == BlockingPreferences.MODE_STUDIN &&
+      session.mode == BlockingPreferences.MODE_CYCLE &&
         session.phase == BlockingPreferences.PHASE_STUDY -> {
-        title = "StudIn study ${session.currentRound} of ${session.totalRounds}"
+        title = "Cycle study ${session.currentRound} of ${session.totalRounds}"
         detail = "Selected apps stay blocked until this Study ends."
       }
-      session.mode == BlockingPreferences.MODE_STUDIN -> {
-        title = "StudIn break after round ${session.currentRound}"
+      session.mode == BlockingPreferences.MODE_CYCLE -> {
+        title = "Cycle break after round ${session.currentRound}"
         detail = "Apps are available. The next Study starts automatically."
       }
       else -> {
-        title = "TockIn is locking selected apps"
-        detail = "Tap your card in TockIn to end the session."
+        title = "Tafik is locking selected apps"
+        detail = "Tap your card in Tafik to end the session."
       }
     }
 
@@ -585,7 +572,7 @@ class ForegroundBlockService : Service() {
     "${session.mode}:${session.phase}:${session.currentRound}:${session.totalRounds}"
 
   companion object {
-    private const val CHANNEL_ID = "tockin_focus"
+    private const val CHANNEL_ID = "tafik_focus"
     private const val NOTIFICATION_ID = 3107
     private const val POLL_INTERVAL_MS = 500L
     private const val EVENT_LOOKBACK_MS = 3000L

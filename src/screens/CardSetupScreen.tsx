@@ -1,25 +1,15 @@
 import { useEffect, useState } from "react";
+import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Trash2 from "lucide-react-native/icons/trash-2";
-import { Body, GhostButton, PrimaryButton, Screen, TapRipple, Title } from "../components";
+import { Body, GhostButton, PrimaryButton, Screen, Title } from "../components";
+import CardEnrollment from "../cardEnrollment";
 import { Nav } from "../nav";
-import { cancelCardRead, readCardUid } from "../nfc";
-import {
-  addRegisteredCard,
-  getRegisteredCards,
-  RegisteredCard,
-  removeRegisteredCard,
-} from "../store";
-import { radius, space, useTheme } from "../theme";
-import { Text, TextInput } from "../typography";
-
-type Step = "list" | "intro" | "reading" | "confirm" | "name" | "done" | "error";
-type ScanFrom = "intro" | "confirm";
-
-function nextCardLabel(cards: RegisteredCard[]): string {
-  return cards.length === 0 ? "My card" : `Card ${cards.length + 1}`;
-}
+import { cancelCardRead } from "../nfc";
+import { getRegisteredCards, RegisteredCard, removeRegisteredCard } from "../store";
+import { radius, space, colors, typeScale } from "../theme";
+import { Text } from "../typography";
 
 function uidHint(uid: string): string {
   return `NFC card ···· ${uid.slice(-4).toUpperCase()}`;
@@ -32,15 +22,10 @@ export default function CardSetupScreen({
   nav: Nav;
   active: boolean;
 }) {
-  const { colors } = useTheme();
+  const edge = useScrollEdge();
   const [cards, setCards] = useState<RegisteredCard[]>([]);
   const [cardsReady, setCardsReady] = useState(false);
-  const [step, setStep] = useState<Step>("list");
-  const [firstUid, setFirstUid] = useState<string | null>(null);
-  const [label, setLabel] = useState("");
-  const [message, setMessage] = useState("");
-  // The step to fall back to when the user cancels a scan in progress.
-  const [scanFrom, setScanFrom] = useState<ScanFrom>("intro");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -55,75 +40,6 @@ export default function CardSetupScreen({
       void cancelCardRead();
     };
   }, []);
-
-  const beginAdd = () => {
-    setFirstUid(null);
-    setLabel(nextCardLabel(cards));
-    setMessage("");
-    setStep("intro");
-  };
-
-  const readFirst = async () => {
-    setScanFrom("intro");
-    setStep("reading");
-    const result = await readCardUid();
-    if ("error" in result) {
-      if (result.cancelled) {
-        setStep("intro");
-        return;
-      }
-      setMessage(result.error);
-      setStep("error");
-      return;
-    }
-    setFirstUid(result.uid);
-    setStep("confirm");
-  };
-
-  const confirm = async () => {
-    setScanFrom("confirm");
-    setStep("reading");
-    const result = await readCardUid();
-    if ("error" in result) {
-      if (result.cancelled) {
-        setStep("confirm");
-        return;
-      }
-      setMessage(result.error);
-      setStep("error");
-      return;
-    }
-    if (result.uid !== firstUid) {
-      // A different UID on the second tap means this card randomizes its ID and
-      // would eventually strand a session that only the original ID can end.
-      setMessage(
-        "This card changes its ID each tap, so it can't be used as a key. Try a cheap NFC sticker or tag instead."
-      );
-      setStep("error");
-      return;
-    }
-    if (cards.some((card) => card.uid === result.uid)) {
-      setMessage("That card is already registered with TockIn.");
-      setStep("error");
-      return;
-    }
-    setFirstUid(result.uid);
-    setStep("name");
-  };
-
-  const save = async () => {
-    if (!firstUid) return;
-    const nextLabel = label.trim() || nextCardLabel(cards);
-    try {
-      const next = await addRegisteredCard({ uid: firstUid, label: nextLabel });
-      setCards(next);
-      setLabel(nextLabel);
-      setStep("done");
-    } catch (error: any) {
-      setMessage(error?.message ?? "TockIn couldn't save that card.");
-      setStep("error");
-    }
-  };
 
   const requestRemove = (card: RegisteredCard) => {
     if (active && cards.length === 1) {
@@ -153,17 +69,34 @@ export default function CardSetupScreen({
     );
   };
 
-  if (step === "list") {
+  if (adding) {
     return (
       <Screen>
-        <Title>Your cards</Title>
-        <View style={{ height: space(0.75) }} />
-        <Body dim>
-          Any registered card can start or end a focus session. You can start one without
-          tapping a card, but only a card ends it.
-        </Body>
+        <CardEnrollment
+          cards={cards}
+          doneLabel="Back to cards"
+          returnLabel="Back to cards"
+          onSaved={(next) => {
+            setCards(next);
+            setAdding(false);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      </Screen>
+    );
+  }
 
-        <ScrollView
+  return (
+    <Screen>
+      <Title>Your cards</Title>
+      <View style={{ height: space(0.75) }} />
+      <Body dim>
+        Any registered card can start or end a focus session. You can start one without
+        tapping a card, but only a card ends it.
+      </Body>
+
+      <View style={{ flex: 1 }}>
+        <ScrollView {...edge.scrollProps}
           style={styles.list}
           contentContainerStyle={cards.length === 0 ? styles.emptyList : undefined}
           showsVerticalScrollIndicator={false}
@@ -190,10 +123,10 @@ export default function CardSetupScreen({
                     <CreditCard size={20} color={colors.textDim} strokeWidth={2} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>
+                    <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>
                       {card.label}
                     </Text>
-                    <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 3 }}>
+                    <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize, marginTop: 3 }}>
                       {uidHint(card.uid)}
                     </Text>
                   </View>
@@ -211,91 +144,14 @@ export default function CardSetupScreen({
             </View>
           )}
         </ScrollView>
-
-        <PrimaryButton
-          label={cards.length === 0 ? "Add a card" : "Add another card"}
-          onPress={beginAdd}
-        />
-        <GhostButton label="Back" onPress={() => nav("home")} />
-      </Screen>
-    );
-  }
-
-  const copy: Record<Exclude<Step, "list" | "name">, { title: string; body: string }> = {
-    intro: {
-      title: "Add a card",
-      body: "Press Scan card, then hold any NFC card or tag to the back of your phone.",
-    },
-    reading: {
-      title: "Ready to scan",
-      body:
-        scanFrom === "confirm"
-          ? "Hold the same card against the back of your phone."
-          : "Hold the card against the back of your phone.",
-    },
-    confirm: {
-      title: "Tap once more",
-      body: "Same card again. This checks its ID stays the same.",
-    },
-    done: {
-      title: "Card registered",
-      body: `${label} can now start and end focus sessions.`,
-    },
-    error: { title: "Hmm", body: message },
-  };
-
-  const current = step === "name" ? null : copy[step];
-  return (
-    <Screen>
-      <Title>{step === "name" ? "Name this card" : current?.title}</Title>
-      <View style={{ height: space(1) }} />
-      <Body dim>
-        {step === "name"
-          ? "Use a name you'll recognize when you manage your keys."
-          : current?.body}
-      </Body>
-
-      <View style={styles.wizardBody}>
-        {step === "name" ? (
-          <TextInput
-            autoFocus
-            value={label}
-            onChangeText={setLabel}
-            onSubmitEditing={() => void save()}
-            returnKeyType="done"
-            maxLength={30}
-            selectTextOnFocus
-            placeholder="My card"
-            placeholderTextColor={colors.textDim}
-            style={[
-              styles.labelInput,
-              { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          />
-        ) : (
-          <TapRipple active={step === "reading"} />
-        )}
+        <ScrollEdgeFade visible={edge.visible} />
       </View>
 
-      {step === "intro" && <PrimaryButton label="Scan card" onPress={() => void readFirst()} />}
-      {step === "confirm" && <PrimaryButton label="Confirm card" onPress={() => void confirm()} />}
-      {step === "name" && <PrimaryButton label="Save card" onPress={() => void save()} />}
-      {step === "reading" && (
-        <>
-          <PrimaryButton label="Waiting for card…" onPress={() => {}} disabled />
-          <GhostButton label="Cancel" onPress={() => void cancelCardRead()} />
-        </>
-      )}
-      {step === "done" && <PrimaryButton label="Back to cards" onPress={() => setStep("list")} />}
-      {step === "error" && (
-        <>
-          <PrimaryButton label="Try again" onPress={beginAdd} />
-          <GhostButton label="Back to cards" onPress={() => setStep("list")} />
-        </>
-      )}
-      {(step === "intro" || step === "confirm" || step === "name") && (
-        <GhostButton label="Cancel" onPress={() => setStep("list")} />
-      )}
+      <PrimaryButton
+        label={cards.length === 0 ? "Add a card" : "Add another card"}
+        onPress={() => setAdding(true)}
+      />
+      <GhostButton label="Back" onPress={() => nav("home")} />
     </Screen>
   );
 }
@@ -325,7 +181,7 @@ const styles = StyleSheet.create({
     marginBottom: space(0.5),
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: typeScale.body.fontSize,
     fontWeight: "600",
   },
   cardList: {
@@ -352,18 +208,5 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-  },
-  wizardBody: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  labelInput: {
-    width: "100%",
-    minHeight: 58,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.input,
-    paddingHorizontal: space(1.75),
-    fontSize: 16,
   },
 });

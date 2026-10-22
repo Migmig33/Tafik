@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import type { Option } from "../welcomeQuestions";
-import { radius, space, useTheme } from "../theme";
+import { radius, space, colors, typeScale } from "../theme";
 import { Text } from "../typography";
 
 const REVEAL_MS = 420;
@@ -26,7 +26,6 @@ export default function WelcomeQuestion<T extends string>({
   options: Option<T>[];
   onAnswer: (value: T) => void;
 }) {
-  const { colors } = useTheme();
   const reveal = useRef(new Animated.Value(0)).current;
 
   // Re-runs per question because the key changes, so the second question
@@ -96,16 +95,16 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   step: {
-    fontSize: 12,
+    fontSize: typeScale.caption.fontSize,
     fontWeight: "600",
     letterSpacing: 0.8,
     textAlign: "center",
   },
   question: {
     marginTop: space(1),
-    fontSize: 23,
+    fontSize: typeScale.title.fontSize,
     lineHeight: 32,
-    fontWeight: "600",
+    fontWeight: "700",
     letterSpacing: -0.3,
     textAlign: "center",
   },
@@ -122,7 +121,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space(2),
   },
   optionLabel: {
-    fontSize: 16,
+    fontSize: typeScale.body.fontSize,
     fontWeight: "500",
   },
 });

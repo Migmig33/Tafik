@@ -3,7 +3,6 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
-import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
 import Flame from "lucide-react-native/icons/flame";
 import Hourglass from "lucide-react-native/icons/hourglass";
 import House from "lucide-react-native/icons/house";
@@ -21,7 +20,8 @@ import ToggleRight from "lucide-react-native/icons/toggle-right";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import { PrimaryButton } from "./components";
 import { hasSeenGuide, markGuideSeen } from "./store";
-import { radius, space, useTheme } from "./theme";
+import { radius, space, colors, typeScale } from "./theme";
+import { ScrollEdgeFade, useScrollEdge } from "./scrollEdge";
 import { Text } from "./typography";
 
 export type GuideKey = "home" | "insights" | "blocklist" | "settings";
@@ -49,21 +49,21 @@ export const GUIDES: Record<GuideKey, Guide> = {
     steps: [
       {
         icon: Nfc,
-        title: "The circle starts a session",
+        title: "The middle button starts a session",
         body:
-          "Tap the circle, or the round button in the middle of the tab bar, then hold your TockIn card against the back of your phone. Your chosen apps lock the moment the card is read.",
+          "Press the round button in the middle of the tab bar. It opens the card screen and waits for your Tafik card. Hold the card against the back of your phone, and your chosen apps lock the moment it is read.",
       },
       {
         icon: ShieldAlert,
         title: "Card not to hand?",
         body:
-          "While TockIn is waiting for a card, a Start without card option appears underneath. It asks you to confirm first, because your card is still the only thing that will unlock the apps afterwards.",
+          "While Tafik is waiting for a card on the card screen, a Start without card option appears underneath. It asks you to confirm first, because your card is still the only thing that will unlock the apps afterwards.",
       },
       {
         icon: Timer,
         title: "Only the card ends it",
         body:
-          "While a session runs, the circle becomes a timer and the middle button turns into a red X. Press that, then tap your card to unlock. However the session started, a card is what finishes it.",
+          "While a session runs, the timer stays on Home and the middle button turns into an X. Press that, then tap your card to end it. However the session started, a card is what finishes it.",
       },
       {
         icon: Flame,
@@ -72,16 +72,16 @@ export const GUIDES: Record<GuideKey, Guide> = {
       },
       {
         icon: BookOpenCheck,
-        title: "StudIn swaps the bottom half",
+        title: "Cycle swaps the bottom half",
         body:
-          "With StudIn on in Settings, the day's totals give way to your study, break and rounds schedule, and the next card tap starts that timed cycle instead.",
+          "With Cycle on in Settings, the day's totals give way to your study, break and rounds schedule, and the next card tap starts that timed cycle instead.",
       },
     ],
   },
   insights: {
     icon: ChartNoAxesCombined,
     title: "This is Insights",
-    intro: "Insights shows where your time actually went, on the phone and inside TockIn.",
+    intro: "Insights shows where your time actually went, on the phone and inside Tafik.",
     steps: [
       {
         icon: Layers,
@@ -91,7 +91,7 @@ export const GUIDES: Record<GuideKey, Guide> = {
       },
       {
         icon: Timer,
-        title: "TockedIn time is yours",
+        title: "Tafik time is yours",
         body:
           "The first card counts the time you spent inside focus sessions, and how many you ran. Screen time, further down, is what your phone recorded for each app.",
       },
@@ -99,13 +99,13 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Hourglass,
         title: "One line, two series",
         body:
-          "On the 7 day view a single chart draws your week. The buttons inside it swap the line between TockedIn time and screen time, so you can hold one against the other without scrolling.",
+          "On the 7 day view a single chart draws your week. The buttons inside it swap the line between Tafik time and screen time, so you can hold one against the other without scrolling.",
       },
       {
         icon: TrendingDown,
         title: "Screen saved is the point",
         body:
-          "Under the total, TockIn compares the period you picked with your own usual day and shows the gap. It also splits your days into the ones you tapped in and the ones you did not, so you can see whether it is working.",
+          "Under the total, Tafik compares the period you picked with your own usual day and shows the gap. It also splits your days into the ones you tapped in and the ones you did not, so you can see whether it is working.",
       },
     ],
   },
@@ -135,26 +135,26 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Nfc,
         title: "Pick at least one app",
         body:
-          "A card tap with an empty list has nothing to lock, so TockIn sends you back here before it starts.",
+          "A card tap with an empty list has nothing to lock, so Tafik sends you back here before it starts.",
       },
     ],
   },
   settings: {
     icon: SlidersHorizontal,
     title: "This is Settings",
-    intro: "Settings is where you shape how TockIn looks and how strict it is.",
+    intro: "Settings is where you shape how Tafik looks and how strict it is.",
     steps: [
       {
         icon: Palette,
-        title: "Appearance and mode",
+        title: "Mode",
         body:
-          "Choose light, dark, or follow the system. Under it, StudIn turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
+          "Choose Dark or Light in Settings. Under that choice, Cycle turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
       },
       {
         icon: ScanLine,
         title: "System access and cards",
         body:
-          "Check the Android permissions TockIn needs, and add or remove NFC cards. A permission switched off elsewhere shows as Required here.",
+          "Check the Android permissions Tafik needs, and add or remove NFC cards. A permission switched off elsewhere shows as Required here.",
       },
       {
         icon: ShieldAlert,
@@ -196,30 +196,6 @@ export function useScreenGuide(key: GuideKey) {
   return { visible, open, close };
 }
 
-/**
- * The round question mark in a screen's header. Deliberately quiet: the guide
- * has already shown itself once, so this is only the way back to it.
- */
-export function GuideButton({ onPress, label }: { onPress: () => void; label: string }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`How ${label} works`}
-      onPress={onPress}
-      // Widens the tap target past the outline, which stays small so it cannot
-      // compete with the screen's own title.
-      hitSlop={10}
-      style={({ pressed }) => [
-        styles.helpButton,
-        { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
-      ]}
-    >
-      <CircleQuestionMark size={19} color={colors.textDim} strokeWidth={2.1} />
-    </Pressable>
-  );
-}
-
 /** The walkthrough card itself. */
 export function GuideSheet({
   guide,
@@ -230,7 +206,7 @@ export function GuideSheet({
   visible: boolean;
   onClose: () => void;
 }) {
-  const { colors } = useTheme();
+  const edge = useScrollEdge();
   const { icon: Icon, title, intro, steps } = GUIDES[guide];
 
   return (
@@ -262,22 +238,25 @@ export function GuideSheet({
               the last one must still be reachable with the button below it.
               The indicator stays visible, because hiding it made a guide that
               scrolls look like one that had simply been cut off. */}
-          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.steps}>
-            {steps.map((step) => {
-              const StepIcon = step.icon;
-              return (
-                <View key={step.title} style={styles.step}>
-                  <View style={[styles.stepIcon, { backgroundColor: colors.accentWash }]}>
-                    <StepIcon size={17} color={colors.accent} strokeWidth={2.1} />
+          <View style={styles.stepScroll}>
+            <ScrollView {...edge.scrollProps} style={styles.stepScroll} contentContainerStyle={styles.steps}>
+              {steps.map((step) => {
+                const StepIcon = step.icon;
+                return (
+                  <View key={step.title} style={styles.step}>
+                    <View style={[styles.stepIcon, { backgroundColor: colors.accentWash }]}>
+                      <StepIcon size={17} color={colors.accent} strokeWidth={2.1} />
+                    </View>
+                    <View style={styles.stepCopy}>
+                      <Text style={[styles.stepTitle, { color: colors.text }]}>{step.title}</Text>
+                      <Text style={[styles.stepBody, { color: colors.textDim }]}>{step.body}</Text>
+                    </View>
                   </View>
-                  <View style={styles.stepCopy}>
-                    <Text style={[styles.stepTitle, { color: colors.text }]}>{step.title}</Text>
-                    <Text style={[styles.stepBody, { color: colors.textDim }]}>{step.body}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
+                );
+              })}
+            </ScrollView>
+            <ScrollEdgeFade visible={edge.visible} bleed={0} />
+          </View>
 
           <View style={styles.action}>
             <PrimaryButton label="Got it" onPress={onClose} />
@@ -289,14 +268,6 @@ export function GuideSheet({
 }
 
 const styles = StyleSheet.create({
-  helpButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   scrim: {
     flex: 1,
     alignItems: "center",
@@ -322,13 +293,13 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     marginTop: space(1.25),
-    fontSize: 20,
+    fontSize: typeScale.headline.fontSize,
     fontWeight: "600",
     letterSpacing: -0.3,
   },
   sheetIntro: {
     marginTop: space(0.5),
-    fontSize: 14,
+    fontSize: typeScale.callout.fontSize,
     lineHeight: 21,
   },
   // Bounded so a long guide grows the list rather than the card. flexGrow: 0
@@ -363,12 +334,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepTitle: {
-    fontSize: 15,
+    fontSize: typeScale.callout.fontSize,
     fontWeight: "600",
   },
   stepBody: {
     marginTop: 3,
-    fontSize: 13,
+    fontSize: typeScale.footnote.fontSize,
     lineHeight: 20,
   },
   action: {

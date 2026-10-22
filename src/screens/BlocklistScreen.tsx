@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
+import { SkeletonShade } from "../skeletonShade";
+import { SoftBlur } from "../softBlur";
+import { NAV_CLEARANCE } from "../tabBar";
 import {
   FlatList,
   Image,
@@ -12,9 +17,9 @@ import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Search from "lucide-react-native/icons/search";
 import { getInstalledApps, InstalledApp } from "../blocking";
 import { Body, Screen, Skeleton, Title } from "../components";
-import { GuideButton, GuideSheet, useScreenGuide } from "../guides";
+import { GuideSheet, useScreenGuide } from "../guides";
 import { getBlocklist, setBlocklist } from "../store";
-import { radius, space, useTheme } from "../theme";
+import { radius, space, colors, typeScale } from "../theme";
 import { Text, TextInput } from "../typography";
 
 /** One row of the card, which is either an installed app or a placeholder. */
@@ -26,8 +31,18 @@ type Row =
 // pattern; uneven ones read as names that have not arrived yet.
 const SKELETON_NAME_WIDTHS = ["58%", "42%", "67%", "35%", "50%", "61%"] as const;
 
-export default function BlocklistScreen() {
-  const { colors } = useTheme();
+/**
+ * The app-selection list. Onboarding mounts it too, with a progress bar above it
+ * and a footer that confirms the choice, so the same list picks the apps there.
+ */
+export default function BlocklistScreen({
+  top,
+  footer,
+}: {
+  top?: ReactNode;
+  footer?: (selectedCount: number) => ReactNode;
+} = {}) {
+  const edge = useScrollEdge();
   const guide = useScreenGuide("blocklist");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -42,7 +57,7 @@ export default function BlocklistScreen() {
       setApps(await getInstalledApps());
     } catch (error: any) {
       setApps([]);
-      setLoadError(error?.message ?? "TockIn couldn't load your app icons.");
+      setLoadError(error?.message ?? "Tafik couldn't load your app icons.");
     } finally {
       setLoading(false);
     }
@@ -60,7 +75,8 @@ export default function BlocklistScreen() {
 
   const toggle = (pkg: string) => {
     const next = new Set(selected);
-    next.has(pkg) ? next.delete(pkg) : next.add(pkg);
+    if (next.has(pkg)) next.delete(pkg);
+    else next.add(pkg);
     persist(next);
   };
 
@@ -87,9 +103,9 @@ export default function BlocklistScreen() {
 
   return (
     <Screen>
+      {top}
       <View style={styles.header}>
         <Title>Blocklist</Title>
-        <GuideButton label="the blocklist" onPress={guide.open} />
       </View>
       <View style={{ height: space(0.75) }} />
       <Body dim>Choose the apps that should disappear while you focus.</Body>
@@ -102,14 +118,14 @@ export default function BlocklistScreen() {
           onChangeText={setQuery}
           placeholder="Search your apps"
           placeholderTextColor={colors.textDim}
-          style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: space(1.5) }}
+          style={{ flex: 1, color: colors.text, fontSize: typeScale.callout.fontSize, paddingVertical: space(1.5) }}
         />
       </View>
 
       <View style={styles.listMeta}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>Your apps</Text>
+        <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>Your apps</Text>
         <View style={[styles.countPill, { backgroundColor: colors.accentWash }]}>
-          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}>
+          <Text style={{ color: colors.accent, fontSize: typeScale.caption.fontSize, fontWeight: "600" }}>
             {selected.size} selected
           </Text>
         </View>
@@ -118,10 +134,10 @@ export default function BlocklistScreen() {
       {loadError ? (
         <View style={[styles.stateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <PackageOpen size={28} color={colors.accent} strokeWidth={1.8} />
-          <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600", textAlign: "center" }}>
+          <Text style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "600", textAlign: "center" }}>
             App icons unavailable
           </Text>
-          <Text style={{ color: colors.textDim, fontSize: 13, lineHeight: 19, textAlign: "center" }}>
+          <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize, lineHeight: 19, textAlign: "center" }}>
             {loadError}
           </Text>
           <Pressable
@@ -129,62 +145,79 @@ export default function BlocklistScreen() {
             style={[styles.retryButton, { backgroundColor: colors.accent }]}
           >
             <RefreshCw size={16} color={colors.onAccent} strokeWidth={2.2} />
-            <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: "600" }}>Try again</Text>
+            <Text style={{ color: colors.onAccent, fontSize: typeScale.callout.fontSize, fontWeight: "600" }}>Try again</Text>
           </Pressable>
         </View>
       ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(item) => (item.kind === "app" ? item.app.pkg : item.key)}
-          style={[styles.list, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          contentContainerStyle={styles.listContent}
-          // Placeholder rows stand for a list nobody can act on yet.
-          scrollEnabled={!loading}
-          ListEmptyComponent={
-            <Text style={{ color: colors.textDim, fontSize: 14, textAlign: "center", padding: space(3) }}>
-              {query.trim() ? "No apps match your search." : "No launchable apps found."}
-            </Text>
-          }
-          ItemSeparatorComponent={() => (
-            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }} />
-          )}
-          renderItem={({ item }) =>
-            item.kind === "skeleton" ? (
-              <View style={styles.appRow}>
-                <Skeleton width={42} height={42} borderRadius={11} />
-                <View style={{ flex: 1 }}>
-                  <Skeleton width={item.nameWidth} height={13} />
-                  <Skeleton width="30%" height={10} style={{ marginTop: space(0.75) }} />
+        <View style={{ flex: 1 }}>
+          <FlatList {...edge.scrollProps}
+            data={rows}
+            keyExtractor={(item) => (item.kind === "app" ? item.app.pkg : item.key)}
+            style={[styles.list, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            contentContainerStyle={styles.listContent}
+            // Placeholder rows stand for a list nobody can act on yet.
+            scrollEnabled={!loading}
+            ListFooterComponent={<View style={{ height: NAV_CLEARANCE }} />}
+            ListEmptyComponent={
+              <Text style={{ color: colors.textDim, fontSize: typeScale.callout.fontSize, textAlign: "center", padding: space(3) }}>
+                {query.trim() ? "No apps match your search." : "No launchable apps found."}
+              </Text>
+            }
+            ItemSeparatorComponent={() => (
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }} />
+            )}
+            renderItem={({ item }) =>
+              item.kind === "skeleton" ? (
+                <View style={styles.appRow}>
+                  <Skeleton width={42} height={42} borderRadius={11} />
+                  <View style={{ flex: 1 }}>
+                    <Skeleton width={item.nameWidth} height={13} />
+                    <Skeleton width="30%" height={10} style={{ marginTop: space(0.75) }} />
+                  </View>
+                  <Skeleton width={51} height={31} borderRadius={radius.pill} />
                 </View>
-                <Skeleton width={51} height={31} borderRadius={radius.pill} />
-              </View>
-            ) : (
-              <Pressable onPress={() => toggle(item.app.pkg)} style={styles.appRow}>
-                <Image
-                  source={{ uri: item.app.icon }}
-                  style={[styles.appIcon, { backgroundColor: colors.accentWash }]}
-                  resizeMode="contain"
-                  fadeDuration={0}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
-                    {item.app.name}
-                  </Text>
-                  <Text numberOfLines={1} style={{ color: colors.textDim, fontSize: 11, marginTop: 2 }}>
-                    {selected.has(item.app.pkg) ? "Locked during focus" : "Available during focus"}
-                  </Text>
-                </View>
-                <Switch
-                  value={selected.has(item.app.pkg)}
-                  onValueChange={() => toggle(item.app.pkg)}
-                  trackColor={{ true: colors.accent, false: colors.border }}
-                />
-              </Pressable>
-            )
-          }
-        />
+              ) : (
+                <Pressable
+                  onPress={() => toggle(item.app.pkg)}
+                  style={styles.appRow}
+                >
+                  <Image
+                    source={{ uri: item.app.icon }}
+                    style={[styles.appIcon, { backgroundColor: colors.accentWash }]}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={{ color: colors.text, fontSize: typeScale.callout.fontSize, fontWeight: "500" }}>
+                      {item.app.name}
+                    </Text>
+                    <Text numberOfLines={1} style={{ color: colors.textDim, fontSize: typeScale.label.fontSize, marginTop: 2 }}>
+                      {selected.has(item.app.pkg) ? "Locked during focus" : "Available during focus"}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={selected.has(item.app.pkg)}
+                    onValueChange={() => toggle(item.app.pkg)}
+                    trackColor={{ true: colors.accent, false: colors.border }}
+                    thumbColor={selected.has(item.app.pkg) ? colors.onAccent : colors.textDim}
+                  />
+                </Pressable>
+              )
+            }
+          />
+          {/* While the apps load, the bottom of the card softly shades into it, inside
+              the same card and clipped to its corners. */}
+          {loading ? (
+            <View style={styles.loadingShade}>
+              <SoftBlur intensity={40} />
+              <SkeletonShade color={colors.surface} />
+            </View>
+          ) : null}
+          <ScrollEdgeFade visible={edge.visible} />
+        </View>
       )}
 
+      {footer ? <View style={styles.footer}>{footer(selected.size)}</View> : null}
       <GuideSheet guide="blocklist" visible={guide.visible} onClose={guide.close} />
     </Screen>
   );
@@ -261,6 +294,18 @@ const styles = StyleSheet.create({
     padding: space(3),
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.card,
+  },
+  footer: {
+    gap: space(1),
+    paddingBottom: space(1),
+  },
+  // Sits inside the card's hairline border, so the shade never covers the outline.
+  loadingShade: {
+    position: "absolute",
+    top: 0,
+    left: StyleSheet.hairlineWidth,
+    right: StyleSheet.hairlineWidth,
+    bottom: StyleSheet.hairlineWidth,
   },
   retryButton: {
     marginTop: space(0.75),

@@ -18,32 +18,32 @@ records its architecture and constraints for future maintenance.
    (`WindowManager` + `TYPE_APPLICATION_OVERLAY`, requires `SYSTEM_ALERT_WINDOW`).
    The overlay is the shield and is drawn directly by `ForegroundBlockService.kt`.
 4. **Own session state.** Start/stop shielding on command from JS, and keep the
-   persistent foreground notification alive while a session runs. TockIn remains
-   open-ended. StudIn derives Study and Break phases from its persisted start
+   persistent foreground notification alive while a session runs. Tafik remains
+   open-ended. Cycle derives Study and Break phases from its persisted start
    time, durations, and round count; the native watchdog releases restrictions
    during Break and reapplies them at the next Study without waking JS.
 5. **Read blocking state without JS awake.** Mirror the blocklist, appearance,
-   and StudIn schedule into `SharedPreferences` so the service can
+   and Cycle schedule into `SharedPreferences` so the service can
    enforce and complete a live session after the React Native runtime sleeps. NFC
-   reads happen in the app UI. One scan starts StudIn; it does not normally end it.
+   reads happen in the app UI. One scan starts Cycle; it does not normally end it.
 
 ## Accessibility policy
 
-TockIn declares `isAccessibilityTool="false"`. Before opening Android's
+Tafik declares `isAccessibilityTool="false"`. Before opening Android's
 Accessibility settings, onboarding displays a separate disclosure and asks for
 affirmative consent. A Play release must include the Accessibility declaration
 and reviewer video. The service performs only deterministic, user-configured
-blocking and cannot prevent the user from disabling or uninstalling TockIn.
+blocking and cannot prevent the user from disabling or uninstalling Tafik.
 
 ## JS ↔ native interface (Expo Modules API)
 
 ```ts
 startSession(blocklist: string[]): Promise<void>   // begin shielding
-startStudInSession(blocklist: string[], studySeconds: number, breakSeconds: number, rounds: number): Promise<void>
+startCycleSession(blocklist: string[], studySeconds: number, breakSeconds: number, rounds: number): Promise<void>
 endSession(): Promise<void>                          // stop shielding
 isSessionActive(): Promise<boolean>
 getSessionState(): Promise<BlockingSessionState>
-consumeStudInResult(): Promise<{ focusSeconds: number; completed: boolean }>
+consumeCycleResult(): Promise<{ focusSeconds: number; completed: boolean }>
 hasUsageAccess(): Promise<boolean>                   // for real onboarding checks
 hasOverlayPermission(): Promise<boolean>
 hasAccessibilityAccess(): Promise<boolean>

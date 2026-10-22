@@ -1,11 +1,11 @@
-# TockIn
+# Tafik
 
-TockIn uses an NFC card to start or end an open-ended focus session. Tap the
-card to lock the apps you chose. Tap it again to get them back. StudIn is the
+Tafik uses an NFC card to start or end an open-ended focus session. Tap the
+card to lock the apps you chose. Tap it again to get them back. Cycle is the
 second mode: one scan starts a timed Study and Break cycle that runs itself and
 ends on its own.
 
-Android only. TockIn is sold as a paid download, with every feature included and
+Android only. Tafik is sold as a paid download, with every feature included and
 no in-app purchases or subscriptions. There is no backend, no account, no
 analytics, and no network call the app makes on its own. Everything it knows
 stays on the phone.
@@ -36,14 +36,14 @@ stays on the phone.
   full-screen shield as the visual fallback
 - Phone-wide screen-time monitoring through Android Usage Access
 - Insights: a seven-day chart, a per-app breakdown, and a week-over-week trend
-- StudIn, with configurable Study length, Break length, and round count
+- Cycle, with configurable Study length, Break length, and round count
 - Light and dark themes, monochrome at rest, accent green only during a session
 - Three emergency unlocks per calendar month for a card that is lost or not to
   hand
 
 ## How it works
 
-TockIn is a React Native app sitting in front of a custom Android native module.
+Tafik is a React Native app sitting in front of a custom Android native module.
 The split is not cosmetic. Blocking has to keep working after Android has put
 the JavaScript runtime to sleep, which it will do within minutes of the user
 leaving the app. Anything that must survive that cannot live in JavaScript.
@@ -70,7 +70,7 @@ leaving the app. Anything that must survive that cannot live in JavaScript.
 │ to window        │   │ draws the shield,    │
 │ changes and      │   │ holds the ongoing    │
 │ presses Home.    │   │ notification, runs   │
-│                  │   │ the StudIn clock.    │
+│                  │   │ the Cycle clock.    │
 └──────────────────┘   └──────────────────────┘
 ```
 
@@ -80,19 +80,19 @@ never misses, and it is the one that draws the shield and keeps the foreground
 notification alive so Android does not kill the process.
 
 SharedPreferences is the seam between the two worlds. JavaScript writes the
-blocklist, the appearance mode, and the StudIn schedule into it, and the native
+blocklist, the appearance mode, and the Cycle schedule into it, and the native
 services read from it. That is why a session started before you locked your
 phone is still running an hour later with the app long since swapped out of
 memory.
 
 ## The two modes
 
-**TockIn** is open-ended. Tap the card, the blocklist is enforced, and it stays
+**Tafik** is open-ended. Tap the card, the blocklist is enforced, and it stays
 enforced until you tap the same card again. There is no timer and no automatic
 end. A "Start without card" option exists on Home for a session begun away from
 the card, but the card is still the only ordinary way out.
 
-**StudIn** is timed. One scan starts the whole cycle: Study, Break, Study,
+**Cycle** is timed. One scan starts the whole cycle: Study, Break, Study,
 Break, for as many rounds as configured. Defaults are 25 minutes of Study, 5 of
 Break, 4 rounds; the accepted ranges are 1 to 180, 1 to 60, and 1 to 12. Apps
 are blocked during Study and released during Break, and the transitions happen
@@ -104,7 +104,7 @@ only way out mid-Study.
 
 1. The user taps a registered card. `src/nfc.ts` reads the UID and compares it
    against the stored cards.
-2. JavaScript calls `startBlockingSession` or `startStudInBlockingSession`,
+2. JavaScript calls `startBlockingSession` or `startCycleBlockingSession`,
    which crosses the bridge into `BlockingModule.kt`.
 3. The module refuses to start unless Usage Access, overlay, and Accessibility
    are all genuinely granted, then writes the session into SharedPreferences and
@@ -112,7 +112,7 @@ only way out mid-Study.
 4. Enforcement runs entirely natively from here. Opening a blocked app triggers
    either an accessibility event or the next poll, and Android is sent Home with
    the shield drawn over the top.
-5. Ending is a second card tap, the StudIn cycle finishing on its own, or an
+5. Ending is a second card tap, the cycle finishing on its own, or an
    emergency unlock. The finished session is written to history as a date and a
    length, never as the apps that were opened.
 
@@ -140,15 +140,15 @@ Everything is in the app's own private storage. Nothing is transmitted.
 | `welcomeAnswers` | The two first-run questions, used to personalise the intro |
 | `cardUid` | Registered NFC cards, as UID and label pairs |
 | `blocklist` | Package names the user chose to block |
-| `focusMode` | `tockin` or `studin` |
-| `studInConfig` | Study minutes, Break minutes, round count |
+| `focusMode` | `tafik` or `cycle` |
+| `cycleConfig` | Study minutes, Break minutes, round count |
 | `activeSessionStartedAt` | Start time of a session still running |
 | `sessions` | Finished sessions, as `{ d: "YYYY-MM-DD", s: seconds }` |
 | `emergencyUnlocks` | Uses so far this calendar month |
 | `guidesSeen` | Which screens have shown their first-visit walkthrough |
 
 **SharedPreferences**, the native mirror in `BlockingPreferences.kt`: the
-blocklist, appearance mode, session mode and start time, and the StudIn
+blocklist, appearance mode, session mode and start time, and the Cycle
 schedule. These are copies, written by JavaScript, existing only so the services
 can read them while the runtime is asleep.
 
@@ -205,7 +205,7 @@ modules/blocking/android/
   BlockingModule.kt         The bridge: every function JavaScript can call
   BlockingPreferences.kt    SharedPreferences read and write
   AccessibilityBlockService.kt   Instant blocked-app redirect
-  ForegroundBlockService.kt      Polling, shield drawing, StudIn clock
+  ForegroundBlockService.kt      Polling, shield drawing, Cycle clock
   res/xml/                  Accessibility service declaration
 
 privacy-site/index.html     The hosted copy of the privacy policy
@@ -268,7 +268,7 @@ In the repo:
       row opens the listing
 - [ ] Produce the listing art: 512x512 icon, 1024x500 feature graphic, and at
       least two phone screenshots
-- [ ] Confirm `com.kupdevs.tockin` is the permanent application ID; it cannot
+- [ ] Confirm `com.kupdevs.tafik` is the permanent application ID; it cannot
       be changed after the first upload
 
 In Play Console:

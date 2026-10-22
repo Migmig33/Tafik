@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, ScrollView, StyleSheet, View } from "react-native";
-import { BrandLockup, PrimaryButton } from "../components";
-import { useWhoosh } from "../sound";
+import { BrandLockup, LOCKUP_MS, PrimaryButton } from "../components";
 import {
   type DistractionAnswer,
   type ScreenTimeAnswer,
   setWelcomeAnswers,
   type WelcomeAnswers,
 } from "../store";
-import { space, useTheme } from "../theme";
+import { space, colors, typeScale } from "../theme";
 import { Text } from "../typography";
 import {
   DISTRACTION_OPTIONS,
@@ -45,8 +44,7 @@ const IDLE_HALF_CYCLE_MS = 2500;
 const FADE_CURVE = Easing.inOut(Easing.ease);
 
 export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => void }) {
-  const { colors } = useTheme();
-  const { play: playWhoosh, lockupMs } = useWhoosh();
+  const lockupMs = LOCKUP_MS;
   const [phase, setPhase] = useState<Phase>("brand");
   const [index, setIndex] = useState(0);
   const [brandVisible, setBrandVisible] = useState(false);
@@ -107,18 +105,17 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
   }, [finishedLines, index, line, phase]);
 
   // The mark now opens the app rather than resolving it, so the lockup and its
-  // whoosh fire on mount. The short pause is still there to let the screen
+  // lockup start on mount. The short pause is still there to let the screen
   // settle before anything moves.
   useEffect(() => {
     finalPause.current = setTimeout(() => {
       setBrandVisible(true);
-      playWhoosh();
     }, FINAL_PAUSE_MS);
 
     return () => {
       if (finalPause.current) clearTimeout(finalPause.current);
     };
-  }, [playWhoosh]);
+  }, []);
 
   const startIdleMotion = useCallback(() => {
     idleAnimation.current?.stop();
@@ -356,7 +353,6 @@ export default function WelcomeScreen({ onGetStarted }: { onGetStarted: () => vo
 
 /** One quiet tap response behind the mark; it plays once and fully disappears. */
 function BrandTapRipple() {
-  const { colors } = useTheme();
   const primary = useRef(new Animated.Value(0)).current;
   const echo = useRef(new Animated.Value(0)).current;
 
@@ -471,7 +467,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space(0.5),
   },
   finalTagline: {
-    fontSize: 17,
+    fontSize: typeScale.body.fontSize,
     lineHeight: 25,
     fontWeight: "600",
     textAlign: "center",
@@ -479,7 +475,7 @@ const styles = StyleSheet.create({
   finalSupport: {
     maxWidth: 300,
     marginTop: space(0.5),
-    fontSize: 14,
+    fontSize: typeScale.callout.fontSize,
     lineHeight: 20,
     textAlign: "center",
   },
@@ -488,14 +484,14 @@ const styles = StyleSheet.create({
     marginTop: space(2.25),
   },
   line: {
-    fontSize: 24,
+    fontSize: typeScale.title.fontSize,
     lineHeight: 35,
     letterSpacing: -0.3,
     textAlign: "center",
   },
   closingLine: {
-    fontSize: 25,
-    fontWeight: "600",
+    fontSize: typeScale.title.fontSize,
+    fontWeight: "700",
     letterSpacing: -0.4,
   },
 });
