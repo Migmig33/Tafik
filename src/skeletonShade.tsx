@@ -14,7 +14,7 @@ function ease(t: number): number {
 export function SkeletonShade({ color }: { color: string }) {
   const stops = Array.from({ length: STEPS + 1 }, (_, index) => {
     const offset = index / STEPS;
-    return { offset, opacity: ease(offset) * 0.96 };
+    return { offset, opacity: ease(offset) * 0.6 };
   });
 
   return (

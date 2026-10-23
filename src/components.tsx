@@ -11,12 +11,9 @@ import {
 } from "react-native";
 import type { DimensionValue } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import LockKeyhole from "lucide-react-native/icons/lock-keyhole";
-import LockKeyholeOpen from "lucide-react-native/icons/lock-keyhole-open";
 import { colors, radius, SCREEN_GUTTER, space, typeScale } from "./theme";
 import { MOTION, PressableScale, useReducedMotion } from "./motion";
 import { TabBarBelowContext } from "./tabBar";
-import type { StreakDay } from "./store";
 import { Text } from "./typography";
 
 // The glyph's share of the square artwork. The asset carries a large safe-zone
@@ -303,6 +300,8 @@ export function TapRipple({
   active = true,
   size = 160,
   coreSize = 64,
+  showCore = true,
+  smooth = false,
   children,
 }: {
   active?: boolean;
@@ -310,7 +309,14 @@ export function TapRipple({
   size?: number;
   /** Diameter of the outlined circle at the centre. */
   coreSize?: number;
-  /** Optional mark drawn inside the outlined centre circle. */
+  /** Draw the outlined circle at the centre. Off, the children sit on the bare ripple. */
+  showCore?: boolean;
+  /**
+   * Eased ring keyframes on a linear clock, so the two waves stay evenly spaced
+   * and expand and fade gradually. Off, the rings keep their original timing.
+   */
+  smooth?: boolean;
+  /** Optional mark drawn inside the centre. */
   children?: React.ReactNode;
 }) {
   const reduce = useReducedMotion();
@@ -363,14 +369,16 @@ export function TapRipple({
     const loop = Animated.loop(
       Animated.timing(a, {
         toValue: 1,
-        duration: 2200,
-        easing: Easing.out(Easing.ease),
+        duration: smooth ? 2600 : 2200,
+        // The smooth clock is linear, so the easing lives in the ring keyframes
+        // and the gap between the two waves stays constant.
+        easing: smooth ? Easing.linear : Easing.out(Easing.ease),
         useNativeDriver: true,
       })
     );
     loop.start();
     return () => loop.stop();
-  }, [a, looping, reduce]);
+  }, [a, looping, reduce, smooth]);
 
   // The centre circle swells a little while a read is open, so the mark seems
   // to be listening. It settles back as soon as the read ends.
@@ -391,6 +399,24 @@ export function TapRipple({
 
   const ring = (delay: number) => {
     const p = Animated.modulo(Animated.add(a, delay), 1);
+    if (smooth) {
+      // Ease-out quad sampled at five points: the wave opens quickly and then
+      // slows as it spreads. The opacity falls off in a straight, gradual line.
+      return {
+        transform: [
+          {
+            scale: p.interpolate({
+              inputRange: [0, 0.25, 0.5, 0.75, 1],
+              outputRange: [0.6, 1.169, 1.575, 1.819, 1.9],
+            }),
+          },
+        ],
+        opacity: Animated.multiply(
+          presence,
+          p.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.42, 0] })
+        ),
+      };
+    }
     return {
       transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.9] }) }],
       opacity: Animated.multiply(
@@ -411,7 +437,7 @@ export function TapRipple({
           width: coreSize,
           height: coreSize,
           borderRadius: 999,
-          borderWidth: 1.5,
+          borderWidth: showCore ? 1.5 : 0,
           borderColor: colors.accent,
           alignItems: "center",
           justifyContent: "center",
@@ -503,6 +529,7 @@ export function HoldButton({
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [holding, setHolding] = useState(false);
   const [left, setLeft] = useState(seconds);
+  const [buttonWidth, setButtonWidth] = useState(0);
 
   const stopTimer = () => {
     if (timer.current !== null) {
@@ -557,6 +584,12 @@ export function HoldButton({
     }).start();
   };
 
+  // The fill is white, and a letter it has passed turns black. The label is drawn twice: the
+  // normal copy beneath the fill, and a black copy inside the fill, cut to the fill's width.
+  const text = holding ? `Keep holding… ${left}s` : label;
+  const fillWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, buttonWidth] });
+  const labelStyle = { fontSize: typeScale.body.fontSize, fontWeight: "600" as const, fontVariant: ["tabular-nums" as const] };
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -564,38 +597,44 @@ export function HoldButton({
       accessibilityHint={`Press and hold for ${seconds} seconds to confirm`}
       onPressIn={start}
       onPressOut={cancel}
+      onLayout={(event) => setButtonWidth(event.nativeEvent.layout.width)}
       disabled={disabled}
       style={{
         height: 60,
         borderRadius: radius.pill,
-        borderWidth: 1.5,
-        borderColor: disabled ? colors.border : colors.accent,
         backgroundColor: colors.surface,
         overflow: "hidden",
         alignItems: "center",
         justifyContent: "center",
       }}
     >
+      <Text style={[labelStyle, { color: disabled ? colors.textDim : colors.text }]}>{text}</Text>
       <Animated.View
+        pointerEvents="none"
         style={{
           position: "absolute",
           left: 0,
           top: 0,
           bottom: 0,
-          backgroundColor: colors.accentWash,
-          width: progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
-        }}
-      />
-      <Text
-        style={{
-          color: disabled ? colors.textDim : colors.accent,
-          fontSize: typeScale.body.fontSize,
-          fontWeight: "600",
-          fontVariant: ["tabular-nums"],
+          width: fillWidth,
+          overflow: "hidden",
+          backgroundColor: colors.accent,
         }}
       >
-        {holding ? `Keep holding… ${left}s` : label}
-      </Text>
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: buttonWidth,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={[labelStyle, { color: colors.onAccent }]}>{text}</Text>
+        </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -839,75 +878,3 @@ export function Skeleton({
   );
 }
 
-/**
- * The current calendar week, Sunday on the left. A white padlock on black means
- * the day earned the streak; an open padlock on a hairline means it did not.
- * Today is ringed in white so it is findable before its session is done.
- */
-export function StreakWeek({ days }: { days: StreakDay[] }) {
-  return (
-    <View style={[streakStyles.week, { backgroundColor: colors.surface }]}>
-      {days.map((day) => {
-        const Icon = day.earned ? LockKeyhole : LockKeyholeOpen;
-        const state = day.earned ? "streak day" : day.isFuture ? "upcoming" : "no streak";
-        return (
-          <View
-            key={day.key}
-            accessible
-            accessibilityLabel={`${day.label}, ${state}${day.isToday ? ", today" : ""}`}
-            style={[streakStyles.day, { opacity: day.isFuture ? 0.5 : 1 }]}
-          >
-            <Text
-              style={[
-                streakStyles.label,
-                { color: day.isToday ? colors.text : colors.textDim, fontWeight: day.isToday ? "600" : "400" },
-              ]}
-            >
-              {day.label}
-            </Text>
-            <View
-              style={[
-                streakStyles.lock,
-                day.earned
-                  ? { backgroundColor: colors.bg }
-                  : { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                day.isToday && { borderWidth: 1, borderColor: colors.text },
-              ]}
-            >
-              <Icon
-                size={18}
-                color={day.earned ? colors.text : colors.textDim}
-                strokeWidth={2}
-              />
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-const streakStyles = StyleSheet.create({
-  week: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    borderRadius: radius.card,
-    paddingHorizontal: space(1.5),
-    paddingVertical: space(2),
-  },
-  day: {
-    flex: 1,
-    alignItems: "center",
-    gap: space(1),
-  },
-  label: {
-    ...typeScale.footnote,
-  },
-  lock: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

@@ -134,7 +134,7 @@ export default function EmergencyScreen({
         <ScrollView {...edge.scrollProps} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
           <Title>{done ? "Apps unblocked" : cycle ? "Emergency Exit" : "Card lost?"}</Title>
           <View style={{ height: space(1) }} />
-          <Body dim>
+          <Text style={{ color: colors.textDim, ...typeScale.callout }}>
             {done
               ? cards.length === 0
                 ? "Your apps are available again. No card is registered, so register one before your next session."
@@ -145,7 +145,7 @@ export default function EmergencyScreen({
                 ? "This will end your Cycle session before your Study timer is complete. Use this only when you need to leave early."
                 : "If your card is lost or unreadable, you can end the session without it. Hold the button below for the full " +
                   `${EMERGENCY_HOLD_SECONDS} seconds and every blocked app unlocks straight away.`}
-          </Body>
+          </Text>
 
           <View style={{ height: space(2.5) }} />
 
@@ -163,7 +163,7 @@ export default function EmergencyScreen({
                   ? "Checking your allowance…"
                   : `${left} of ${EMERGENCY_UNLOCKS_PER_MONTH} emergency unlocks left`}
               </Text>
-              <Text style={{ color: colors.textDim, fontSize: typeScale.caption.fontSize, marginTop: 4, lineHeight: 17 }}>
+              <Text style={{ color: colors.textDim, fontSize: typeScale.footnote.fontSize, marginTop: space(0.5), lineHeight: typeScale.footnote.lineHeight }}>
                 {exhausted
                   ? `All ${EMERGENCY_UNLOCKS_PER_MONTH} are spent. Your allowance refills on ${resetsOn}.`
                   : `This month's allowance. It resets to ${EMERGENCY_UNLOCKS_PER_MONTH} on ${resetsOn}.`}
@@ -202,10 +202,12 @@ export default function EmergencyScreen({
                 onComplete={confirmUnlock}
                 disabled={exhausted || !active || left === null || busy}
               />
-              <GhostButton
-                label={cycle ? "Keep studying" : "Cancel"}
-                onPress={() => nav(returnScreen)}
-              />
+              <View style={styles.cancel}>
+                <GhostButton
+                  label={cycle ? "Keep studying" : "Cancel"}
+                  onPress={() => nav(returnScreen)}
+                />
+              </View>
             </>
           )}
         </ScrollView>
@@ -276,6 +278,11 @@ export default function EmergencyScreen({
 }
 
 const styles = StyleSheet.create({
+  // Sits under the hold action, with the same bottom inset the other screens use.
+  cancel: {
+    marginTop: space(0.5),
+    marginBottom: space(3),
+  },
   card: {
     flexDirection: "row",
     alignItems: "flex-start",

@@ -16,6 +16,8 @@ export type BlockingSessionState = {
   sessionStartedAt: number;
   studyDurationSeconds: number;
   breakDurationSeconds: number;
+  /** True once the current Cycle phase has run out and waits for the user to move on. */
+  awaiting?: boolean;
 };
 export type CycleResult = { focusSeconds: number; completed: boolean };
 
@@ -31,6 +33,8 @@ type BlockingNativeModule = {
   isSessionActive(): Promise<boolean>;
   getSessionState?(): Promise<BlockingSessionState>;
   consumeCycleResult?(): Promise<CycleResult>;
+  advanceCycle?(): Promise<boolean>;
+  finishCycleSession?(): Promise<void>;
   hasUsageAccess(): Promise<boolean>;
   hasOverlayPermission(): Promise<boolean>;
   hasAccessibilityAccess?(): Promise<boolean>;
@@ -103,6 +107,21 @@ const INACTIVE_SESSION: BlockingSessionState = {
   breakDurationSeconds: 0,
 };
 
+/**
+ * Moves a waiting Cycle phase on: Study to Break, or Break to the next Study. Returns false when no
+ * phase was waiting, so a repeated tap does nothing.
+ */
+export async function advanceCycle(): Promise<boolean> {
+  if (!native || typeof native.advanceCycle !== "function") return false;
+  return native.advanceCycle();
+}
+
+/** Completes the session after its last Break, through the same path as an early stop. */
+export async function finishCycleSession(): Promise<void> {
+  if (!native || typeof native.finishCycleSession !== "function") return;
+  await native.finishCycleSession();
+}
+
 export async function getBlockingSessionState(): Promise<BlockingSessionState> {
   if (!native) return INACTIVE_SESSION;
   if (typeof native.getSessionState !== "function") {
@@ -122,6 +141,7 @@ export async function getBlockingSessionState(): Promise<BlockingSessionState> {
     sessionStartedAt: Math.max(0, Number(state.sessionStartedAt) || 0),
     studyDurationSeconds: Math.max(0, Math.round(Number(state.studyDurationSeconds) || 0)),
     breakDurationSeconds: Math.max(0, Math.round(Number(state.breakDurationSeconds) || 0)),
+    awaiting: Boolean(state.awaiting),
   };
 }
 

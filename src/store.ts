@@ -13,6 +13,7 @@ import { isBlockingSessionActive } from "./blocking";
 const KEYS = {
   onboardingDone: "onboardingDone",
   welcomeSeen: "welcomeSeen", // the one-time first-launch intro copy
+  cycleReminderHidden: "cycleReminderHidden", // "1" once the Cycle start reminder is turned off
   cardUid: "cardUid",
   blocklist: "blocklist", // array of package names
   sessions: "sessions", // array of completed session records
@@ -337,7 +338,7 @@ export async function getStreakWeek(now = new Date()): Promise<StreakDay[]> {
 // trade-off we accept for staying fully on-device with no accounts.
 
 export const EMERGENCY_UNLOCKS_PER_MONTH = 3;
-export const EMERGENCY_HOLD_SECONDS = 45;
+export const EMERGENCY_HOLD_SECONDS = 25;
 
 type EmergencyRecord = { m: string; n: number };
 
@@ -415,6 +416,15 @@ export async function getWelcomeSeen(): Promise<boolean> {
 
 export async function setWelcomeSeen(seen: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.welcomeSeen, seen ? "1" : "0");
+}
+
+/** True once the user has chosen not to see the Cycle start reminder again. */
+export async function getCycleReminderHidden(): Promise<boolean> {
+  return (await AsyncStorage.getItem(KEYS.cycleReminderHidden)) === "1";
+}
+
+export async function setCycleReminderHidden(hidden: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.cycleReminderHidden, hidden ? "1" : "0");
 }
 
 // --- Screen guides ---------------------------------------------------------

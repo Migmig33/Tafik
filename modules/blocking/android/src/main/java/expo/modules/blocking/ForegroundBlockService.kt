@@ -109,6 +109,14 @@ class ForegroundBlockService : Service() {
         return
       }
       refreshNotification(session)
+      // A phase that has run out posts its alert once, and then waits for the user.
+      if (session.awaiting) {
+        val key = BlockingPreferences.alertKey(session)
+        if (BlockingPreferences.alertedKey(this@ForegroundBlockService) != key) {
+          BlockingPreferences.markAlerted(this@ForegroundBlockService, key)
+          postPhaseAlert(session)
+        }
+      }
       val foreground = currentForegroundPackage()
 
       // Break releases restrictions, while this service remains alive to
@@ -523,10 +531,56 @@ class ForegroundBlockService : Service() {
     getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
   }
 
+  /** Posts a phase's completion alert on a channel that sounds and vibrates. */
+  private fun postPhaseAlert(session: BlockingSessionState) {
+    val manager = getSystemService(NotificationManager::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val channel = NotificationChannel(
+        ALERT_CHANNEL_ID,
+        "Cycle alerts",
+        NotificationManager.IMPORTANCE_HIGH
+      ).apply {
+        description = "Sounds when a Cycle study or break ends."
+        enableVibration(true)
+      }
+      manager.createNotificationChannel(channel)
+    }
+    val studyDone = session.phase == BlockingPreferences.PHASE_STUDY
+    val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+      .setContentTitle(if (studyDone) "Study complete" else "Break over")
+      .setContentText(
+        if (studyDone) "Open Tafik to start your break." else "Open Tafik to continue your cycle."
+      )
+      .setSmallIcon(applicationInfo.icon)
+      .setAutoCancel(true)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      // Public, so the alert can show on the lock screen rather than only after unlocking.
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+      .setContentIntent(
+        PendingIntent.getActivity(
+          this,
+          0,
+          packageManager.getLaunchIntentForPackage(packageName),
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+      )
+      .build()
+    manager.notify(ALERT_NOTIFICATION_ID, notification)
+  }
+
   private fun buildNotification(session: BlockingSessionState): android.app.Notification {
     val title: String
     val detail: String
     when {
+      session.awaiting && session.phase == BlockingPreferences.PHASE_STUDY -> {
+        title = "Study complete"
+        detail = "Open Tafik to start your break."
+      }
+      session.awaiting && session.mode == BlockingPreferences.MODE_CYCLE -> {
+        title = "Break over"
+        detail = "Open Tafik to continue your cycle."
+      }
       session.mode == BlockingPreferences.MODE_CYCLE &&
         session.phase == BlockingPreferences.PHASE_STUDY -> {
         title = "Cycle study ${session.currentRound} of ${session.totalRounds}"
@@ -574,6 +628,10 @@ class ForegroundBlockService : Service() {
   companion object {
     private const val CHANNEL_ID = "tafik_focus"
     private const val NOTIFICATION_ID = 3107
+    // The completion alert sounds and vibrates on its own channel, so it can reach the user while
+    // the app is in the background.
+    private const val ALERT_CHANNEL_ID = "tafik_cycle_alerts"
+    private const val ALERT_NOTIFICATION_ID = 3108
     private const val POLL_INTERVAL_MS = 500L
     private const val EVENT_LOOKBACK_MS = 3000L
     private const val INITIAL_USAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000L

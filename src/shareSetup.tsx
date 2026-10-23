@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { View as NativeView } from "react-native";
+import type { RefObject } from "react";
+import ArrowLeft from "lucide-react-native/icons/arrow-left";
+import { useExpoBlur } from "./softBlur";
 import { Body, GhostButton, PrimaryButton, Title } from "./components";
 import { clearShareBackground, chooseShareBackground, getShareBackground } from "./shareBackground";
-import { ShareCard } from "./shareCard";
+import { ShareComposition } from "./shareCard";
 import type { SessionCardFacts } from "./sessionFacts";
 import {
   CARD_HEIGHT,
@@ -13,7 +16,7 @@ import {
   textToneFor,
   type TextTone,
 } from "./shareCardMath";
-import { radius, space, colors, typeScale } from "./theme";
+import { radius, space, colors, typeScale, useThemeMode } from "./theme";
 import { Text } from "./typography";
 
 const PREVIEW_WIDTH = 240;
@@ -30,9 +33,12 @@ const ZOOM_STEP = 0.25;
 export function ShareSetupModal({
   facts,
   onClose,
+  blurTarget,
 }: {
   facts: SessionCardFacts | null;
   onClose: () => void;
+  /** The screen content behind the editor, wrapped in a blur target so the editor can blur it. */
+  blurTarget?: RefObject<NativeView | null>;
 }) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -41,6 +47,18 @@ export function ShareSetupModal({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cardRef = useRef<NativeView>(null);
+  const blur = useExpoBlur();
+  const mode = useThemeMode();
+
+  // The hardware back button closes the editor, as the modal it replaces did.
+  useEffect(() => {
+    if (!facts) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [facts, onClose]);
 
   // The drag handler is created once, so it reads the latest values from these refs.
   const latest = useRef({ zoom, offset });
@@ -131,19 +149,34 @@ export function ShareSetupModal({
   const art = { photoUri, zoom, offsetX: offset.x, offsetY: offset.y, tone };
 
   return (
-    <Modal visible={facts !== null} transparent={false} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.screen, { backgroundColor: colors.bg }]}>
+    facts === null ? null : (
+    <View style={StyleSheet.absoluteFill}>
+      {/* The page behind the editor, blurred. The blur reaches only the content inside the screen's
+          blur target. Without the native module the scrim alone covers the page. */}
+      {blur && blurTarget ? (
+        <blur.BlurView
+          blurTarget={blurTarget}
+          tint={mode === "light" ? "light" : "dark"}
+          intensity={60}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
+      ) : (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} />
+      )}
+      <View style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Title>Share session</Title>
           <View style={{ height: space(0.75) }} />
-          <Body dim>Choose how the card looks, then share it.</Body>
+          <Body dim>Choose a background, then share it.</Body>
 
           {facts ? (
             <>
               {/* The preview is the exported card, scaled down. Drag it to reposition a photo. */}
               <View
                 {...pan.panHandlers}
-                style={[styles.preview, { width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT, borderColor: colors.border }]}
+                style={[styles.preview, { width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT }]}
               >
                 <View
                   style={{
@@ -153,7 +186,7 @@ export function ShareSetupModal({
                     transform: [{ scale: PREVIEW_SCALE }],
                   }}
                 >
-                  <ShareCard ref={cardRef} facts={facts} art={art} />
+                  <ShareComposition ref={cardRef} facts={facts} art={art} />
                 </View>
               </View>
               {photoUri ? <Body dim>Drag the preview to reposition the photo.</Body> : null}
@@ -204,12 +237,27 @@ export function ShareSetupModal({
           ) : null}
         </ScrollView>
 
+        {/* The way back out of the editor, at the top left, level with the title. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={12}
+          onPress={onClose}
+          style={({ pressed }) => [
+            styles.back,
+            { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.65 : 1 },
+          ]}
+        >
+          <ArrowLeft size={20} color={colors.text} strokeWidth={2.2} />
+        </Pressable>
+
         <View style={styles.actions}>
           <PrimaryButton label={busy ? "Opening share…" : "Share"} disabled={busy || !facts} onPress={() => void share()} />
           <GhostButton label="Close" onPress={onClose} />
         </View>
       </View>
-    </Modal>
+    </View>
+    )
   );
 }
 
@@ -255,10 +303,9 @@ const styles = StyleSheet.create({
     gap: space(1.5),
     alignItems: "center",
   },
+  // The preview has no panel of its own: the composition sits directly on the screen.
   preview: {
     overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
     marginTop: space(1),
   },
   section: {
@@ -294,6 +341,18 @@ const styles = StyleSheet.create({
     paddingVertical: space(1.25),
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.pill,
+  },
+  // Floats over the top of the scrolling content, at the left. The title is centred, so the two do not meet.
+  back: {
+    position: "absolute",
+    top: space(5),
+    left: space(2.5),
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
   },
   actions: {
     gap: space(1),

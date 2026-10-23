@@ -1,18 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import { Body, GhostButton, PrimaryButton, Screen, Title } from "../components";
 import CardEnrollment from "../cardEnrollment";
+import NfcCardShowcase from "../nfcCardShowcase";
 import { Nav } from "../nav";
 import { cancelCardRead } from "../nfc";
 import { getRegisteredCards, RegisteredCard, removeRegisteredCard } from "../store";
 import { radius, space, colors, typeScale } from "../theme";
 import { Text } from "../typography";
+import { SoftBlur, useExpoBlur } from "../softBlur";
+
+// The blur band at the foot of the card list. Cards that scroll into it are softened; the rest stays sharp.
+const BLUR_HEIGHT = space(14);
 
 function uidHint(uid: string): string {
   return `NFC card ···· ${uid.slice(-4).toUpperCase()}`;
+}
+
+/**
+ * The blur band at the foot of the list. The gradient above the blur fades its top edge into the
+ * page, so the blur starts softly rather than on a line. Neither layer takes touches.
+ */
+function BottomBlur({ target }: { target: RefObject<View | null> }) {
+  return (
+    <View pointerEvents="none" style={styles.bottomBlur}>
+      <SoftBlur target={target} intensity={40} />
+      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="cardsBlurFade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={colors.bg} stopOpacity={0.9} />
+            <Stop offset="1" stopColor={colors.bg} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#cardsBlurFade)" />
+      </Svg>
+    </View>
+  );
 }
 
 export default function CardSetupScreen({
@@ -26,6 +53,10 @@ export default function CardSetupScreen({
   const [cards, setCards] = useState<RegisteredCard[]>([]);
   const [cardsReady, setCardsReady] = useState(false);
   const [adding, setAdding] = useState(false);
+  // The card list is the blur target: the bottom band blurs the list content behind it.
+  const blur = useExpoBlur();
+  const blurTarget = useRef<View>(null);
+  const Target = blur?.BlurTargetView ?? View;
 
   useEffect(() => {
     let mounted = true;
@@ -96,20 +127,17 @@ export default function CardSetupScreen({
       </Body>
 
       <View style={{ flex: 1 }}>
-        <ScrollView {...edge.scrollProps}
-          style={styles.list}
-          contentContainerStyle={cards.length === 0 ? styles.emptyList : undefined}
-          showsVerticalScrollIndicator={false}
-        >
-          {!cardsReady ? null : cards.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.largeIcon, { backgroundColor: colors.bg }]}>
-                <CreditCard size={28} color={colors.textDim} strokeWidth={1.8} />
-              </View>
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No card registered</Text>
-              <Body dim>Add one NFC card or tag to use as your key.</Body>
+        <Target ref={blurTarget} style={{ flex: 1 }}>
+        <ScrollView {...edge.scrollProps} style={styles.list} showsVerticalScrollIndicator={false}>
+          {/* The same 3D card the Home screen shows, read from the same stored cards. It waits for the
+              stored list, so an empty list is never mistaken for a missing card while it loads. */}
+          {cardsReady ? (
+            <View style={styles.showcase}>
+              <NfcCardShowcase cards={cards} onRegister={() => setAdding(true)} />
             </View>
-          ) : (
+          ) : null}
+
+          {cards.length > 0 ? (
             <View style={[styles.cardList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {cards.map((card, index) => (
                 <View
@@ -142,15 +170,18 @@ export default function CardSetupScreen({
                 </View>
               ))}
             </View>
-          )}
+          ) : null}
         </ScrollView>
+        </Target>
         <ScrollEdgeFade visible={edge.visible} />
+        {/* Only with cards in the list: the empty state's own button must not sit under the blur. */}
+        {cards.length > 0 ? <BottomBlur target={blurTarget} /> : null}
       </View>
 
-      <PrimaryButton
-        label={cards.length === 0 ? "Add a card" : "Add another card"}
-        onPress={() => setAdding(true)}
-      />
+      {/* With no card, the showcase's own "Register card" button is the way to add one. */}
+      {cards.length > 0 ? (
+        <PrimaryButton label="Add another card" onPress={() => setAdding(true)} />
+      ) : null}
       <GhostButton label="Back" onPress={() => nav("home")} />
     </Screen>
   );
@@ -159,30 +190,21 @@ export default function CardSetupScreen({
 const styles = StyleSheet.create({
   list: {
     flex: 1,
-    marginTop: space(3),
+    marginTop: space(2),
   },
-  emptyList: {
-    flexGrow: 1,
-    justifyContent: "center",
+  // The bottom band of the card list. It sits inside the list's box, clipped to it, and takes no touches.
+  bottomBlur: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: BLUR_HEIGHT,
+    overflow: "hidden",
   },
-  emptyCard: {
+  // Centred in the page, with the same stage the Home screen uses, so the card reads the same here.
+  showcase: {
     alignItems: "center",
-    gap: space(1),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
-    padding: space(3),
-  },
-  largeIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: space(0.5),
-  },
-  emptyTitle: {
-    fontSize: typeScale.body.fontSize,
-    fontWeight: "600",
+    marginBottom: space(3),
   },
   cardList: {
     borderWidth: StyleSheet.hairlineWidth,

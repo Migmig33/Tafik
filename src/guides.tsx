@@ -4,7 +4,6 @@ import type { LucideIcon } from "lucide-react-native";
 import BookOpenCheck from "lucide-react-native/icons/book-open-check";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import Flame from "lucide-react-native/icons/flame";
-import Hourglass from "lucide-react-native/icons/hourglass";
 import House from "lucide-react-native/icons/house";
 import Layers from "lucide-react-native/icons/layers";
 import ListChecks from "lucide-react-native/icons/list-checks";
@@ -57,18 +56,18 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: ShieldAlert,
         title: "Card not to hand?",
         body:
-          "While Tafik is waiting for a card on the card screen, a Start without card option appears underneath. It asks you to confirm first, because your card is still the only thing that will unlock the apps afterwards.",
+          "While Tafik is waiting for a card on the card screen, a Start without card option appears underneath. It asks you to confirm first. The session still ends with your card, and emergency unlocks are the only other way out.",
       },
       {
         icon: Timer,
         title: "Only the card ends it",
         body:
-          "While a session runs, the timer stays on Home and the middle button turns into an X. Press that, then tap your card to end it. However the session started, a card is what finishes it.",
+          "While a session runs, the middle button turns into an X. Press it, then tap your card to end the session. Emergency Exit is the only other way out.",
       },
       {
         icon: Flame,
         title: "The pill is your streak",
-        body: "It counts the days in a row you have tapped in at least once.",
+        body: "Each day with at least one focus session adds to it. Miss a day and it starts again.",
       },
       {
         icon: BookOpenCheck,
@@ -93,13 +92,7 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Timer,
         title: "Tafik time is yours",
         body:
-          "The first card counts the time you spent inside focus sessions, and how many you ran. Screen time, further down, is what your phone recorded for each app.",
-      },
-      {
-        icon: Hourglass,
-        title: "One line, two series",
-        body:
-          "On the 7 day view a single chart draws your week. The buttons inside it swap the line between Tafik time and screen time, so you can hold one against the other without scrolling.",
+          "Tafik time is the time you spent inside focus sessions. Screen time is what your phone recorded for each app. The chart switches between the two.",
       },
       {
         icon: TrendingDown,
@@ -135,7 +128,7 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Nfc,
         title: "Pick at least one app",
         body:
-          "A card tap with an empty list has nothing to lock, so Tafik sends you back here before it starts.",
+          "With no apps chosen, a card tap stops and offers to open the Blocklist instead.",
       },
     ],
   },
@@ -148,7 +141,7 @@ export const GUIDES: Record<GuideKey, Guide> = {
         icon: Palette,
         title: "Mode",
         body:
-          "Choose Dark or Light in Settings. Under that choice, Cycle turns the open-ended session into a timed study and break cycle. Strict Mode, a tighter version of every mode with fewer ways out, is on the way.",
+          "Turn on Light theme to switch from Dark. Cycle turns the open-ended session into a timed study and break cycle. Strict Mode is coming soon and is not available yet.",
       },
       {
         icon: ScanLine,

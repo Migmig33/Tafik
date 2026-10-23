@@ -117,8 +117,25 @@ class BlockingModule : Module() {
         "phaseEndsAt" to state.phaseEndsAt.toDouble(),
         "sessionStartedAt" to state.sessionStartedAt.toDouble(),
         "studyDurationSeconds" to state.studyDurationSeconds,
-        "breakDurationSeconds" to state.breakDurationSeconds
+        "breakDurationSeconds" to state.breakDurationSeconds,
+        "awaiting" to state.awaiting
       )
+    }
+
+    // Moves a waiting Cycle phase on, once per tap. Completing the last Break ends the service too.
+    AsyncFunction("advanceCycle") {
+      val context = requireNotNull(appContext.reactContext)
+      val moved = BlockingPreferences.advanceCycle(context)
+      if (!BlockingPreferences.isActive(context)) {
+        context.stopService(Intent(context, ForegroundBlockService::class.java))
+      }
+      moved
+    }
+
+    AsyncFunction("finishCycleSession") {
+      val context = requireNotNull(appContext.reactContext)
+      BlockingPreferences.finishCycleSession(context)
+      context.stopService(Intent(context, ForegroundBlockService::class.java))
     }
 
     AsyncFunction("consumeCycleResult") {

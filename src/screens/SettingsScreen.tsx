@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Children, Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { LayoutAnimation } from "react-native";
 import {
   Alert,
@@ -46,7 +46,6 @@ import {
   setFocusMode,
 } from "../store";
 import { chooseThemeMode, colors, radius, space, typeScale, useThemeMode } from "../theme";
-import { Switch } from "react-native";
 import Moon from "lucide-react-native/icons/moon";
 import Sun from "lucide-react-native/icons/sun";
 import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
@@ -65,7 +64,7 @@ const PLAY_STORE_URL = "";
 const DEVELOPER_NAME = "KupDevs";
 const DEVELOPER_EMAIL = "kupdevs@gmail.com";
 
-/** The two outbound links, and what to say while there is nowhere to go yet. */
+/** The outbound links in About, and what to say while there is nowhere to go yet. */
 type AboutLink = {
   key: "privacy" | "rate";
   title: string;
@@ -105,6 +104,13 @@ const TIP_SCREENS: { key: GuideKey; label: string }[] = [
   { key: "blocklist", label: "Blocklist" },
   { key: "settings", label: "Settings" },
 ];
+
+// The icon tile and the text beside it share one left edge on every row, and the
+// group's separators start where that text starts, so the lines read as belonging to the text.
+const ICON_TILE = 36;
+const ROW_GAP = space(1.25);
+const ROW_PADDING = space(1.5);
+const SEPARATOR_INSET = ROW_PADDING + ICON_TILE + ROW_GAP;
 
 export default function SettingsScreen({
   onManageCards,
@@ -181,326 +187,211 @@ export default function SettingsScreen({
 
   const resetsIn = emergencyDaysUntilReset();
   const cycleOn = focusMode === "cycle";
-  const rows: {
-    title: string;
-    detail: string;
-    status: string;
-    icon: LucideIcon;
-    onPress: () => void;
-  }[] = [
-    {
-      title: "Usage access",
-      detail: "Screen time and app detection",
-      status: access.usage ? "Allowed" : "Required",
-      icon: ShieldCheck,
-      onPress: () => setUsageDisclosureOpen(true),
-    },
-    {
-      title: "Accessibility",
-      detail: "Immediate blocked-app redirect",
-      status: access.accessibility ? "Allowed" : "Required",
-      icon: Accessibility,
-      onPress: () => setAccessibilityDisclosureOpen(true),
-    },
-    {
-      title: "Display over apps",
-      detail: "Shield distracting apps during focus",
-      status: access.overlay ? "Allowed" : "Required",
-      icon: Layers,
-      onPress: () => void Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION"),
-    },
-    {
-      title: "Tafik cards",
-      detail: "Add or remove your NFC keys",
-      status: "Open",
-      icon: ScanLine,
-      onPress: onManageCards,
-    },
-    {
-      title: "App settings",
-      detail: "Notifications, permissions, and battery",
-      status: "Open",
-      icon: Bell,
-      onPress: () => void Linking.openSettings(),
-    },
-  ];
+  const lightOn = themeMode === "light";
 
   return (
     <Screen>
       <View style={{ flex: 1 }}>
         <ScrollView {...edge.scrollProps} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: space(2) }}>
-          <View style={styles.header}>
+          <View style={styles.intro}>
             <Title>Settings</Title>
+            <Body dim>Make Tafik feel right for you.</Body>
           </View>
-          <View style={{ height: space(0.75) }} />
-          <Body dim>Make Tafik feel right for you.</Body>
 
-          <Text style={[styles.sectionLabel, { color: colors.textDim }]}>APPEARANCE</Text>
-        <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.row}>
-            <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-              {themeMode === "light" ? (
-                <Sun size={20} color={colors.accent} strokeWidth={2.1} />
-              ) : (
-                <Moon size={20} color={colors.accent} strokeWidth={2.1} />
-              )}
-            </View>
-            <Text style={[styles.rowTitle, { color: colors.text, flex: 1 }]}>Appearance</Text>
-            <Switch
-              accessibilityLabel="Light appearance"
-              value={themeMode === "light"}
-              onValueChange={(on) => chooseThemeMode(on ? "light" : "dark")}
-              trackColor={{ false: colors.border, true: colors.accent }}
-              thumbColor={themeMode === "light" ? colors.onAccent : colors.textDim}
+          <SectionHeading>Appearance</SectionHeading>
+          <SettingGroup>
+            <SettingRow
+              icon={lightOn ? Sun : Moon}
+              title="Light theme"
+              detail="Off uses the dark theme."
+              role="switch"
+              label="Light theme"
+              checked={lightOn}
+              onPress={() => chooseThemeMode(lightOn ? "dark" : "light")}
+              trailing={<ToggleSwitch on={lightOn} />}
             />
-          </View>
-        </View>
+          </SettingGroup>
 
-        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>FOCUS</Text>
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Pressable
-              accessibilityRole="switch"
-              accessibilityState={{ checked: cycleOn }}
-              accessibilityLabel="Cycle mode"
+          <SectionHeading>Focus</SectionHeading>
+          <SettingGroup>
+            <SettingRow
+              icon={BookOpenCheck}
+              title="Cycle"
+              detail="Timed study rounds with automatic breaks."
+              role="switch"
+              label="Cycle mode"
+              checked={cycleOn}
               onPress={() => chooseMode(cycleOn ? "tafik" : "cycle")}
-              style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <BookOpenCheck size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>Cycle</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Timed study rounds with automatic breaks.
-                </Text>
-              </View>
-              <ModeSwitch on={cycleOn} />
-            </Pressable>
-
-            {/* Announced, not offered. It carries no switch so the row cannot
+              trailing={<ToggleSwitch on={cycleOn} />}
+            />
+            {/* Announced, not offered. It has no switch, so the row cannot
                 promise a mode that is not built yet. */}
-            <View
-              style={[
-                styles.row,
-                { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-              ]}
-            >
-              <View
-                style={[
-                  styles.iconBox,
-                  styles.pendingIconBox,
-                  { backgroundColor: colors.bg, borderColor: colors.border },
-                ]}
-              >
-                <LockKeyhole size={20} color={colors.textDim} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.textDim }]}>Strict Mode</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  A stricter version of every mode.
-                </Text>
-              </View>
-              <Text style={[styles.rowStatus, { color: colors.textDim }]}>Coming soon</Text>
-            </View>
-          </View>
-          <Text style={[styles.modeNote, { color: colors.textDim }]}>
+            <SettingRow
+              icon={LockKeyhole}
+              title="Strict Mode"
+              detail="A stricter version of every mode."
+              dimmed
+              trailing={<Status>Coming soon</Status>}
+            />
+            <SettingRow
+              icon={ScanLine}
+              title="Tafik cards"
+              detail="Add or remove your NFC keys."
+              onPress={onManageCards}
+              trailing={<Chevron />}
+            />
+            <SettingRow
+              icon={ShieldAlert}
+              title="Emergency unlocks"
+              detail="Unlock without your card."
+              label="Emergency unlocks"
+              onPress={() => setEmergencyInfoOpen(true)}
+              trailing={
+                <>
+                  <Status accent>{emergencyLeft === null ? "—" : `${emergencyLeft} left`}</Status>
+                  <Chevron />
+                </>
+              }
+            />
+          </SettingGroup>
+          <Text style={[styles.note, { color: colors.textDim }]}>
             {cycleOn
               ? "Your card starts a timed study cycle. Set the schedule on home, and end a cycle early by tapping your card during a break."
               : "Your card starts an open session that stays locked until you tap the card again."}
           </Text>
 
-          <Text style={[styles.sectionLabel, { color: colors.textDim }]}>SYSTEM ACCESS</Text>
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            {rows.map((row, index) => {
-              const Icon = row.icon;
-              const allowed = row.status === "Allowed";
-              return (
-                <Pressable
-                  key={row.title}
-                  onPress={row.onPress}
-                  style={({ pressed }) => [
-                    styles.row,
-                    index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                    { opacity: pressed ? 0.68 : 1 },
-                  ]}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                    <Icon size={20} color={colors.accent} strokeWidth={2.1} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.rowTitle, { color: colors.text }]}>{row.title}</Text>
-                    <Text style={[styles.rowDetail, { color: colors.textDim }]}>{row.detail}</Text>
-                  </View>
-                  <Text style={[styles.rowStatus, { color: allowed ? colors.accent : colors.textDim }]}>
-                    {row.status}
-                  </Text>
-                  <ChevronRight size={17} color={colors.textDim} />
-                </Pressable>
-              );
-            })}
-          </View>
+          <SectionHeading>Permissions</SectionHeading>
+          <SettingGroup>
+            <SettingRow
+              icon={ShieldCheck}
+              title="Usage access"
+              detail="Screen time and app detection."
+              onPress={() => setUsageDisclosureOpen(true)}
+              trailing={
+                <>
+                  <Status accent={access.usage}>{access.usage ? "Allowed" : "Required"}</Status>
+                  <Chevron />
+                </>
+              }
+            />
+            <SettingRow
+              icon={Accessibility}
+              title="Accessibility"
+              detail="Immediate blocked-app redirect."
+              onPress={() => setAccessibilityDisclosureOpen(true)}
+              trailing={
+                <>
+                  <Status accent={access.accessibility}>{access.accessibility ? "Allowed" : "Required"}</Status>
+                  <Chevron />
+                </>
+              }
+            />
+            <SettingRow
+              icon={Layers}
+              title="Display over apps"
+              detail="Shield distracting apps during focus."
+              onPress={() => void Linking.sendIntent("android.settings.action.MANAGE_OVERLAY_PERMISSION")}
+              trailing={
+                <>
+                  <Status accent={access.overlay}>{access.overlay ? "Allowed" : "Required"}</Status>
+                  <Chevron />
+                </>
+              }
+            />
+            <SettingRow
+              icon={Bell}
+              title="App settings"
+              detail="Notifications, permissions, and battery."
+              onPress={() => void Linking.openSettings()}
+              trailing={<Chevron />}
+            />
+          </SettingGroup>
 
-          <Text style={[styles.sectionLabel, { color: colors.textDim }]}>EMERGENCY ACCESS</Text>
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Emergency unlocks"
-              onPress={() => setEmergencyInfoOpen(true)}
-              style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <ShieldAlert size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>Emergency unlocks</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Unlock without your card.
-                </Text>
-              </View>
-              <Text style={[styles.rowStatus, { color: colors.accent }]}>
-                {emergencyLeft === null ? "—" : `${emergencyLeft} left`}
-              </Text>
-            </Pressable>
-          </View>
-          <Text style={[styles.sectionLabel, { color: colors.textDim }]}>HELP</Text>
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <SectionHeading>Help</SectionHeading>
+          <SettingGroup>
             {/* Tips opens the short notes that each screen used to show behind its
                 own question mark. Setup itself is onboarding, not a separate tutorial. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Tips"
-              accessibilityState={{ expanded: tipsOpen }}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setTipsOpen((open) => !open);
-              }}
-              style={({ pressed }) => [
-                styles.row,
-                { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                { opacity: pressed ? 0.68 : 1 },
-              ]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <CircleQuestionMark size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>Tips</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Short notes on each screen, whenever you need them.
-                </Text>
-              </View>
-              <View style={{ transform: [{ rotate: tipsOpen ? "90deg" : "0deg" }] }}>
-                <ChevronRight size={17} color={colors.textDim} />
-              </View>
-            </Pressable>
+            <Fragment>
+              <SettingRow
+                icon={CircleQuestionMark}
+                title="Tips"
+                detail="Short notes on each screen, whenever you need them."
+                label="Tips"
+                expanded={tipsOpen}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setTipsOpen((open) => !open);
+                }}
+                trailing={<Chevron open={tipsOpen} />}
+              />
+              {tipsOpen ? (
+                <View style={styles.tipList}>
+                  {TIP_SCREENS.map((item) => (
+                    <Pressable
+                      key={item.key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.label} tips`}
+                      onPress={() => setTipsGuide(item.key)}
+                      style={({ pressed }) => [styles.tipRow, { opacity: pressed ? 0.68 : 1 }]}
+                    >
+                      <Text style={[styles.tipLabel, { color: colors.text }]}>{item.label}</Text>
+                      <Chevron />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </Fragment>
+          </SettingGroup>
 
-            {tipsOpen ? (
-              <View style={styles.tipList}>
-                {TIP_SCREENS.map((item) => (
-                  <Pressable
-                    key={item.key}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.label} tips`}
-                    onPress={() => setTipsGuide(item.key)}
-                    style={({ pressed }) => [styles.tipRow, { opacity: pressed ? 0.68 : 1 }]}
-                  >
-                    <Text style={[styles.tipLabel, { color: colors.text }]}>{item.label}</Text>
-                    <ChevronRight size={17} color={colors.textDim} />
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-          </View>
-          <Text style={[styles.sectionLabel, { color: colors.textDim }]}>ABOUT</Text>
-          <View style={[styles.systemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            {aboutLinks.map((link, index) => {
-              const Icon = link.icon;
-              const ready = link.key === "privacy" || link.url.length > 0;
-              return (
-                <Pressable
-                  key={link.key}
-                  accessibilityRole="link"
-                  accessibilityLabel={link.title}
-                  onPress={() => {
-                    if (link.key === "privacy") {
-                      onOpenPrivacy();
-                      return;
-                    }
-                    // Nothing to open yet, so say so rather than failing silently.
-                    if (!ready) {
-                      setPendingLink(link);
-                      return;
-                    }
-                    Linking.openURL(link.url).catch(() => setPendingLink(link));
-                  }}
-                  style={({ pressed }) => [
-                    styles.row,
-                    index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                    { opacity: pressed ? 0.68 : 1 },
-                  ]}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                    <Icon size={20} color={colors.accent} strokeWidth={2.1} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.rowTitle, { color: colors.text }]}>{link.title}</Text>
-                    <Text style={[styles.rowDetail, { color: colors.textDim }]}>{link.detail}</Text>
-                  </View>
-                  <ChevronRight size={17} color={colors.textDim} />
-                </Pressable>
-              );
-            })}
+          <SectionHeading>About</SectionHeading>
+          <SettingGroup>
+            {aboutLinks.map((link) => (
+              <SettingRow
+                key={link.key}
+                icon={link.icon}
+                title={link.title}
+                detail={link.detail}
+                role="link"
+                label={link.title}
+                onPress={() => {
+                  if (link.key === "privacy") {
+                    onOpenPrivacy();
+                    return;
+                  }
+                  // Nothing to open yet, so say so rather than failing silently.
+                  if (link.url.length === 0) {
+                    setPendingLink(link);
+                    return;
+                  }
+                  Linking.openURL(link.url).catch(() => setPendingLink(link));
+                }}
+                trailing={<Chevron />}
+              />
+            ))}
 
             {/* Tafik asks for the three most invasive permissions Android has, so
                 a name and a way to reach it is a trust signal rather than a
                 credit. An anonymous app with this permission set reads as
                 something to uninstall. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="About the developer"
+            <SettingRow
+              icon={UserRound}
+              title="Developer"
+              detail="Who made Tafik, and how to get in touch."
+              label="About the developer"
               onPress={() => setDeveloperOpen(true)}
-              style={({ pressed }) => [
-                styles.row,
-                { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                { opacity: pressed ? 0.68 : 1 },
-              ]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <UserRound size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>Developer</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Who made Tafik, and how to get in touch.
-                </Text>
-              </View>
-              <ChevronRight size={17} color={colors.textDim} />
-            </Pressable>
+              trailing={<Chevron />}
+            />
 
             {/* TEMPORARY: testing only. Remove this row, the onPreviewOnboarding prop, and the preview wiring in App.tsx and OnboardingScreen.tsx. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Preview onboarding"
+            <SettingRow
+              icon={Layers}
+              title="Preview onboarding"
+              detail="Temporary. Walks the first-launch steps. Nothing is changed."
+              label="Preview onboarding"
               onPress={() => onPreviewOnboarding?.()}
-              style={({ pressed }) => [
-                styles.row,
-                { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-                { opacity: pressed ? 0.68 : 1 },
-              ]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.accentWash }]}>
-                <Layers size={20} color={colors.accent} strokeWidth={2.1} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.text }]}>Preview Onboarding</Text>
-                <Text style={[styles.rowDetail, { color: colors.textDim }]}>
-                  Temporary. Walks the first-launch steps. Nothing is changed.
-                </Text>
-              </View>
-              <Text style={[styles.rowStatus, { color: colors.accent }]}>Preview</Text>
-            </Pressable>
-          </View>
+              trailing={<Chevron />}
+            />
+          </SettingGroup>
           <View style={{ height: NAV_CLEARANCE }} />
         </ScrollView>
         <ScrollEdgeFade visible={edge.visible} />
@@ -614,18 +505,122 @@ export default function SettingsScreen({
   );
 }
 
+/** A section heading. Sentence case at the footnote size, quiet but clearly above its group. */
+function SectionHeading({ children }: { children: string }) {
+  return <Text style={[styles.sectionLabel, { color: colors.textDim }]}>{children}</Text>;
+}
+
+/**
+ * A grouped surface holding related rows. Rows are separated by a hairline that starts
+ * at the text, so the group reads as one list rather than a stack of boxes.
+ */
+function SettingGroup({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children);
+  return (
+    <View style={[styles.group, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {items.map((item, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <View style={[styles.separator, { backgroundColor: colors.border }]} /> : null}
+          {item}
+        </Fragment>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One setting: an icon tile, a title with an optional description, and a trailing
+ * control. A row with `onPress` is tappable; a row without one only shows its state.
+ */
+function SettingRow({
+  icon: Icon,
+  title,
+  detail,
+  trailing,
+  onPress,
+  dimmed = false,
+  role = "button",
+  label,
+  checked,
+  expanded,
+}: {
+  icon: LucideIcon;
+  title: string;
+  detail?: string;
+  trailing?: ReactNode;
+  onPress?: () => void;
+  /** A row that is announced but not available yet. */
+  dimmed?: boolean;
+  role?: "button" | "switch" | "link";
+  label?: string;
+  checked?: boolean;
+  expanded?: boolean;
+}) {
+  const content = (
+    <>
+      <View
+        style={[
+          styles.iconTile,
+          dimmed
+            ? { backgroundColor: colors.bg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }
+            : { backgroundColor: colors.accentWash },
+        ]}
+      >
+        <Icon size={20} color={dimmed ? colors.textDim : colors.accent} strokeWidth={2.1} />
+      </View>
+      <View style={styles.rowText}>
+        <Text style={[styles.rowTitle, { color: dimmed ? colors.textDim : colors.text }]}>{title}</Text>
+        {detail ? <Text style={[styles.rowDetail, { color: colors.textDim }]}>{detail}</Text> : null}
+      </View>
+      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.row}>{content}</View>;
+
+  return (
+    <Pressable
+      accessibilityRole={role}
+      accessibilityLabel={label ?? title}
+      accessibilityState={{
+        ...(role === "switch" ? { checked } : {}),
+        ...(expanded !== undefined ? { expanded } : {}),
+      }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.68 : 1 }]}
+    >
+      {content}
+    </Pressable>
+  );
+}
+
+/** The chevron that marks a row as opening something. Rotated when the row expands in place. */
+function Chevron({ open = false }: { open?: boolean }) {
+  return (
+    <View style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}>
+      <ChevronRight size={18} color={colors.textDim} strokeWidth={2} />
+    </View>
+  );
+}
+
+/** A short value shown before the chevron: a state, or a count. */
+function Status({ children, accent = false }: { children: string; accent?: boolean }) {
+  return (
+    <Text style={[styles.rowStatus, { color: accent ? colors.accent : colors.textDim }]}>{children}</Text>
+  );
+}
+
 const SWITCH_WIDTH = 46;
 const SWITCH_HEIGHT = 28;
 const SWITCH_PADDING = 3;
 const SWITCH_KNOB = SWITCH_HEIGHT - SWITCH_PADDING * 2;
 
 /**
- * The mode switch. It slides rather than simply recolouring, because the two
- * modes are exclusive: seeing the knob travel is what says the other one just
- * turned off. Colour is animated alongside the position, so this drives layout
- * values and cannot run on the native driver.
+ * The one switch used for every toggle in Settings. It slides rather than simply recolouring,
+ * because seeing the knob travel is what shows a change of state. Colour is animated alongside
+ * the position, so this drives layout values and cannot run on the native driver.
  */
-function ModeSwitch({ on }: { on: boolean }) {
+function ToggleSwitch({ on }: { on: boolean }) {
   const progress = useRef(new Animated.Value(on ? 1 : 0)).current;
 
   useEffect(() => {
@@ -671,37 +666,50 @@ function SheetStat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: space(1.5),
+  intro: {
+    gap: space(0.75),
   },
-  tipList: {
-    marginLeft: space(1),
+  // Section headings are sentence case at the footnote size: quiet, but clearly a heading above
+  // its group, with no tracking or capitals to fight the rows beneath.
+  sectionLabel: {
+    ...typeScale.footnote,
+    fontWeight: "600",
+    marginTop: space(3),
     marginBottom: space(1),
   },
-  tipRow: {
+  group: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
+    overflow: "hidden",
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: SEPARATOR_INSET,
+  },
+  // Every row is the same height, so a one-line row and a two-line row sit on the same rhythm.
+  row: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: ROW_GAP,
+    paddingHorizontal: ROW_PADDING,
     paddingVertical: space(1.25),
-    paddingHorizontal: space(1),
   },
-  tipLabel: {
-    ...typeScale.callout,
-    fontWeight: "600",
+  iconTile: {
+    width: ICON_TILE,
+    height: ICON_TILE,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  sectionLabel: {
-    ...typeScale.label,
-    fontWeight: "600",
-    marginTop: space(3.5),
-    marginBottom: space(1.25),
+  // Title and description are a pair, so they are tuned as one. Android pads every Text with
+  // the font's own ascent and descent, which stacked up with the margin to leave a visible gap
+  // between the two lines; dropping that padding closes it without touching the line-height.
+  // minWidth lets long text wrap inside the row instead of pushing the trailing control off-edge.
+  rowText: {
+    flex: 1,
+    minWidth: 0,
   },
-  // Title and description are a pair, so they are tuned as one. Android pads
-  // every Text with the font's own ascent and descent, which stacked up with
-  // the margin to leave a visible gap between the two lines; dropping that
-  // padding closes it without touching the 1.5 line-height inside each block.
   rowTitle: {
     fontSize: typeScale.callout.fontSize,
     fontWeight: "600",
@@ -709,33 +717,42 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   rowDetail: {
-    fontSize: typeScale.caption.fontSize,
+    fontSize: typeScale.footnote.fontSize,
     marginTop: 1,
     lineHeight: 18,
     includeFontPadding: false,
   },
-  rowStatus: {
-    fontSize: typeScale.caption.fontSize,
-    fontWeight: "500",
-  },
-  systemCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.card,
-    overflow: "hidden",
-  },
-  row: {
-    minHeight: 74,
+  // Every trailing control sits in the same slot, at the same right edge, so switches and chevrons line up.
+  trailing: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space(1.25),
-    paddingHorizontal: space(1.5),
+    gap: space(1),
+    flexShrink: 0,
   },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+  rowStatus: {
+    fontSize: typeScale.footnote.fontSize,
+    fontWeight: "500",
+  },
+  tipList: {
+    paddingLeft: SEPARATOR_INSET,
+    paddingRight: ROW_PADDING,
+    paddingBottom: space(1),
+  },
+  tipRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  tipLabel: {
+    ...typeScale.callout,
+    fontWeight: "600",
+  },
+  // Under the Focus group: what the Cycle switch changes, in the same footnote voice as the rows.
+  note: {
+    fontSize: typeScale.footnote.fontSize,
+    lineHeight: 18,
+    marginTop: space(1),
   },
   // Sits between the bio and the contact row, so the thanks lands before the
   // one thing on the sheet that asks the reader to do something.
@@ -755,9 +772,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.input,
     paddingHorizontal: space(1.5),
   },
-  pendingIconBox: {
-    borderWidth: StyleSheet.hairlineWidth,
-  },
   switchTrack: {
     width: SWITCH_WIDTH,
     height: SWITCH_HEIGHT,
@@ -769,11 +783,6 @@ const styles = StyleSheet.create({
     width: SWITCH_KNOB,
     height: SWITCH_KNOB,
     borderRadius: SWITCH_KNOB / 2,
-  },
-  modeNote: {
-    fontSize: typeScale.caption.fontSize,
-    lineHeight: 18,
-    marginTop: space(1),
   },
   sheetStats: {
     gap: space(0.75),

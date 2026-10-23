@@ -12,7 +12,9 @@ internal data class BlockingSessionState(
   val phaseEndsAt: Long,
   val sessionStartedAt: Long,
   val studyDurationSeconds: Int,
-  val breakDurationSeconds: Int
+  val breakDurationSeconds: Int,
+  // True once the current Cycle phase has run out. It waits here until the user moves on.
+  val awaiting: Boolean = false
 )
 
 internal data class CycleResult(
@@ -31,6 +33,15 @@ internal object BlockingPreferences {
   private const val TOTAL_ROUNDS = "totalRounds"
   private const val PENDING_CYCLE_FOCUS_MS = "pendingCycleFocusMs"
   private const val PENDING_CYCLE_COMPLETED = "pendingCycleCompleted"
+  // The current Cycle phase, its round, and when it began. Each phase keeps its own start time, so a
+  // phase that has run out can wait for the user without the next one starting on its own.
+  private const val CURSOR_PHASE = "cursorPhase"
+  private const val CURSOR_ROUND = "cursorRound"
+  private const val CURSOR_STARTED_AT = "cursorStartedAt"
+  // Study time already completed in this session, so the total survives a long wait.
+  private const val BANKED_FOCUS_MS = "bankedFocusMs"
+  // The phase whose completion alert has already been posted, so each one sounds once.
+  private const val ALERTED_KEY = "alertedKey"
 
   const val MODE_NONE = "none"
   const val MODE_TAFIK = "tafik"
@@ -78,6 +89,11 @@ internal object BlockingPreferences {
       .putLong(STUDY_DURATION_MS, studyDurationSeconds * 1000L)
       .putLong(BREAK_DURATION_MS, breakDurationSeconds * 1000L)
       .putInt(TOTAL_ROUNDS, rounds)
+      .putString(CURSOR_PHASE, PHASE_STUDY)
+      .putInt(CURSOR_ROUND, 1)
+      .putLong(CURSOR_STARTED_AT, now)
+      .putLong(BANKED_FOCUS_MS, 0L)
+      .putString(ALERTED_KEY, "")
       .commit()
   }
 
@@ -85,7 +101,7 @@ internal object BlockingPreferences {
   fun stop(context: Context) {
     val state = sessionState(context)
     if (state.active && state.mode == MODE_CYCLE) {
-      finishCycle(context, focusedMillisAt(context, System.currentTimeMillis()), completed = false)
+      finishCycle(context, bankedFocusAt(context, System.currentTimeMillis()), completed = false)
       return
     }
     prefs(context).edit().putBoolean(ACTIVE, false).commit()
@@ -128,40 +144,25 @@ internal object BlockingPreferences {
     val studyMs = preferences.getLong(STUDY_DURATION_MS, 25 * 60 * 1000L).coerceAtLeast(1000L)
     val breakMs = preferences.getLong(BREAK_DURATION_MS, 5 * 60 * 1000L).coerceAtLeast(1000L)
     val rounds = preferences.getInt(TOTAL_ROUNDS, 1).coerceAtLeast(1)
-    val elapsed = (now - startedAt).coerceAtLeast(0L)
-    val totalDuration = studyMs * rounds + breakMs * (rounds - 1)
-
-    if (elapsed >= totalDuration) {
-      finishCycle(context, studyMs * rounds, completed = true)
-      return inactiveState()
-    }
-
-    val cycleMs = studyMs + breakMs
-    val roundIndex = (elapsed / cycleMs).toInt().coerceIn(0, rounds - 1)
-    val withinRound = elapsed - roundIndex * cycleMs
-    val studyPhase = withinRound < studyMs
-    val phaseStartedAt = if (studyPhase) {
-      startedAt + roundIndex * cycleMs
-    } else {
-      startedAt + roundIndex * cycleMs + studyMs
-    }
-    val phaseEndsAt = if (studyPhase) {
-      startedAt + roundIndex * cycleMs + studyMs
-    } else {
-      startedAt + (roundIndex + 1) * cycleMs
-    }
+    // The phase in progress comes from its own stored start. Once its time has run out, it stays
+    // here, flagged as awaiting, until the user moves the cycle on.
+    val studyPhase = (preferences.getString(CURSOR_PHASE, PHASE_STUDY) ?: PHASE_STUDY) == PHASE_STUDY
+    val round = preferences.getInt(CURSOR_ROUND, 1).coerceIn(1, rounds)
+    val phaseStartedAt = preferences.getLong(CURSOR_STARTED_AT, startedAt)
+    val phaseEndsAt = phaseStartedAt + if (studyPhase) studyMs else breakMs
 
     return BlockingSessionState(
       active = true,
       mode = MODE_CYCLE,
       phase = if (studyPhase) PHASE_STUDY else PHASE_BREAK,
-      currentRound = roundIndex + 1,
+      currentRound = round,
       totalRounds = rounds,
       phaseStartedAt = phaseStartedAt,
       phaseEndsAt = phaseEndsAt,
       sessionStartedAt = startedAt,
       studyDurationSeconds = (studyMs / 1000L).toInt(),
-      breakDurationSeconds = (breakMs / 1000L).toInt()
+      breakDurationSeconds = (breakMs / 1000L).toInt(),
+      awaiting = now >= phaseEndsAt
     )
   }
 
@@ -184,20 +185,64 @@ internal object BlockingPreferences {
   fun blocklist(context: Context): Set<String> =
     prefs(context).getStringSet(BLOCKLIST, emptySet())?.toSet() ?: emptySet()
 
-  private fun focusedMillisAt(context: Context, now: Long): Long {
+  /** Study time banked so far, plus the Study in progress if the user ends the session now. */
+  private fun bankedFocusAt(context: Context, now: Long): Long {
     val preferences = prefs(context)
-    val startedAt = preferences.getLong(SESSION_STARTED_AT, now)
+    val banked = preferences.getLong(BANKED_FOCUS_MS, 0L).coerceAtLeast(0L)
     val studyMs = preferences.getLong(STUDY_DURATION_MS, 0L).coerceAtLeast(0L)
-    val breakMs = preferences.getLong(BREAK_DURATION_MS, 0L).coerceAtLeast(0L)
-    val rounds = preferences.getInt(TOTAL_ROUNDS, 1).coerceAtLeast(1)
-    if (studyMs == 0L) return 0L
+    val inStudy = (preferences.getString(CURSOR_PHASE, PHASE_STUDY) ?: PHASE_STUDY) == PHASE_STUDY
+    if (!inStudy) return banked
+    val phaseStartedAt = preferences.getLong(CURSOR_STARTED_AT, now)
+    return banked + minOf((now - phaseStartedAt).coerceAtLeast(0L), studyMs)
+  }
 
-    val totalDuration = studyMs * rounds + breakMs * (rounds - 1)
-    val elapsed = (now - startedAt).coerceIn(0L, totalDuration)
-    val cycleMs = studyMs + breakMs
-    val completedCycles = (elapsed / cycleMs).coerceAtMost((rounds - 1).toLong())
-    val withinCycle = elapsed - completedCycles * cycleMs
-    return completedCycles * studyMs + minOf(withinCycle, studyMs)
+  /**
+   * Moves a held cycle on: Study to Break, Break to the next Study, or, after the last Break, the
+   * session completes. Returns false when no phase is waiting, so a repeated tap does nothing.
+   */
+  @Synchronized
+  fun advanceCycle(context: Context, now: Long = System.currentTimeMillis()): Boolean {
+    val state = sessionState(context, now)
+    if (!state.active || state.mode != MODE_CYCLE || !state.awaiting) return false
+    val preferences = prefs(context)
+    if (state.phase == PHASE_STUDY) {
+      val studyMs = preferences.getLong(STUDY_DURATION_MS, 0L)
+      preferences.edit()
+        .putLong(BANKED_FOCUS_MS, preferences.getLong(BANKED_FOCUS_MS, 0L) + studyMs)
+        .putString(CURSOR_PHASE, PHASE_BREAK)
+        .putLong(CURSOR_STARTED_AT, now)
+        .commit()
+      return true
+    }
+    if (state.currentRound < state.totalRounds) {
+      preferences.edit()
+        .putString(CURSOR_PHASE, PHASE_STUDY)
+        .putInt(CURSOR_ROUND, state.currentRound + 1)
+        .putLong(CURSOR_STARTED_AT, now)
+        .commit()
+      return true
+    }
+    finishCycleSession(context, now)
+    return true
+  }
+
+  /** Completes the session after its last Break, through the same finish path as an early stop. */
+  @Synchronized
+  fun finishCycleSession(context: Context, now: Long = System.currentTimeMillis()) {
+    val state = sessionState(context, now)
+    if (!state.active || state.mode != MODE_CYCLE) return
+    finishCycle(context, bankedFocusAt(context, now), completed = true)
+  }
+
+  /** Identifies one waiting phase, so its completion alert is posted once. */
+  fun alertKey(state: BlockingSessionState): String = "${state.phase}:${state.currentRound}"
+
+  @Synchronized
+  fun alertedKey(context: Context): String = prefs(context).getString(ALERTED_KEY, "") ?: ""
+
+  @Synchronized
+  fun markAlerted(context: Context, key: String) {
+    prefs(context).edit().putString(ALERTED_KEY, key).commit()
   }
 
   private fun finishCycle(context: Context, focusMillis: Long, completed: Boolean) {

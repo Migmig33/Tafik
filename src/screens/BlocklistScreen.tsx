@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
 import { SkeletonShade } from "../skeletonShade";
-import { SoftBlur } from "../softBlur";
+import { SoftBlur, useExpoBlur } from "../softBlur";
 import { NAV_CLEARANCE } from "../tabBar";
 import {
   FlatList,
@@ -43,6 +43,10 @@ export default function BlocklistScreen({
   footer?: (selectedCount: number) => ReactNode;
 } = {}) {
   const edge = useScrollEdge();
+  // The list is the blur target: the loading shade blurs the rows behind it.
+  const blur = useExpoBlur();
+  const blurTarget = useRef<View>(null);
+  const Target = blur?.BlurTargetView ?? View;
   const guide = useScreenGuide("blocklist");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -150,6 +154,7 @@ export default function BlocklistScreen({
         </View>
       ) : (
         <View style={{ flex: 1 }}>
+          <Target ref={blurTarget} style={styles.blurTarget}>
           <FlatList {...edge.scrollProps}
             data={rows}
             keyExtractor={(item) => (item.kind === "app" ? item.app.pkg : item.key)}
@@ -205,11 +210,15 @@ export default function BlocklistScreen({
               )
             }
           />
+          </Target>
           {/* While the apps load, the bottom of the card softly shades into it, inside
               the same card and clipped to its corners. */}
           {loading ? (
             <View style={styles.loadingShade}>
-              <SoftBlur intensity={40} />
+              {/* The same blur the list uses, limited to the lower part of the card. */}
+              <View style={styles.bottomBlur}>
+                <SoftBlur target={blurTarget} intensity={40} />
+              </View>
               <SkeletonShade color={colors.surface} />
             </View>
           ) : null}
@@ -299,6 +308,10 @@ const styles = StyleSheet.create({
     gap: space(1),
     paddingBottom: space(1),
   },
+  // The blur target fills the list's area, so the shade blurs exactly the rows behind it.
+  blurTarget: {
+    flex: 1,
+  },
   // Sits inside the card's hairline border, so the shade never covers the outline.
   loadingShade: {
     position: "absolute",
@@ -306,6 +319,15 @@ const styles = StyleSheet.create({
     left: StyleSheet.hairlineWidth,
     right: StyleSheet.hairlineWidth,
     bottom: StyleSheet.hairlineWidth,
+  },
+  // The lower part of the loading card, where the blur sits. Clipped to its own box.
+  bottomBlur: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "45%",
+    overflow: "hidden",
   },
   retryButton: {
     marginTop: space(0.75),

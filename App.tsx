@@ -10,6 +10,8 @@ import {
   BlockingSessionState,
   consumeCycleResult,
   endBlockingSession,
+  advanceCycle,
+  finishCycleSession,
   getBlockingSessionState,
   hasAccessibilityAccess,
   hasAccessibilityServiceSupport,
@@ -18,6 +20,7 @@ import {
   startCycleBlockingSession,
 } from "./src/blocking";
 import ErrorBoundary from "./src/ErrorBoundary";
+import CycleStartPrompt from "./src/cycleStartPrompt";
 import BottomNav from "./src/BottomNav";
 import { ScreenName } from "./src/nav";
 import { cancelCardRead, readCardUid } from "./src/nfc";
@@ -51,6 +54,8 @@ import {
   recordSession,
   setActiveSessionStartedAt,
   setWelcomeSeen,
+  getCycleReminderHidden,
+  setCycleReminderHidden,
 } from "./src/store";
 import { applyThemeMode, colors, useThemeMode } from "./src/theme";
 import { ScreenFade } from "./src/motion";
@@ -95,6 +100,15 @@ function AppContent() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [cycleSession, setCycleSession] = useState<BlockingSessionState | null>(null);
   const [cycleCompleted, setCycleCompleted] = useState(false);
+  // Set while a waiting Cycle phase is being moved on, so a rapid second tap does nothing.
+  const advancingCycle = useRef(false);
+  // The open Cycle start reminder, with the answer it is waiting on.
+  const [cyclePrompt, setCyclePrompt] = useState<{
+    body: string;
+    resolve: (ok: boolean, hide: boolean) => void;
+  } | null>(null);
+  // True while the share editor is open on Home. The tab bar steps aside so the editor has the whole screen.
+  const [shareOpen, setShareOpen] = useState(false);
   const [blockCount, setBlockCount] = useState(0);
   // Held here rather than read per screen so the tab bar's centre button and
   // home's circle always show the same mode at the same moment.
@@ -103,6 +117,9 @@ function AppContent() {
   // stray card cannot lock or unlock the phone; the tab bar's centre button is
   // what arms it, and home renders the feedback.
   const [scanning, setScanning] = useState<null | "start" | "end" | "cycle">(null);
+  // Counts every read the app starts or drops. A read that resolves after it was
+  // dropped sees a stale count and leaves the state alone, so it cannot clear a newer read.
+  const readSeq = useRef(0);
   // Android back returns from the card screen to Home instead of leaving the app.
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -217,10 +234,20 @@ function AppContent() {
     };
   }, [active, cycleSession?.mode]);
 
+  /**
+   * Drops the open read at once. The screen and the centre button clear right away,
+   * and the reader's cleanup runs in the background; the next read waits for it.
+   */
+  const dropScan = () => {
+    readSeq.current += 1;
+    setScanning(null);
+    void cancelCardRead();
+  };
+
   // An armed reader that outlives the screen showing the ripple would sit
   // listening with nothing on screen to say so.
   useEffect(() => {
-    if (screen !== "nfc" && screen !== "cycle") void cancelCardRead();
+    if (screen !== "nfc" && screen !== "cycle") dropScan();
   }, [screen]);
 
   // Hold on a bare background until storage answers, so we know which of the
@@ -337,8 +364,11 @@ function AppContent() {
       setScreen("cardSetup");
       return false;
     }
+    const seq = ++readSeq.current;
     setScanning(kind);
     const result = await readCardUid();
+    // A read the user already dropped must not clear the state or report on anything.
+    if (seq !== readSeq.current) return false;
     setScanning(null);
     if ("error" in result) {
       // A cancel is the user's own doing, so there is nothing to report.
@@ -359,12 +389,18 @@ function AppContent() {
    * otherwise leave this promise unresolved and the button dead.
    */
   const confirmCycle = async (): Promise<boolean> => {
+    // Once the user has turned the reminder off, a Cycle starts with no prompt at all.
+    if (await getCycleReminderHidden()) return true;
     const unlocksLeft = await getEmergencyUnlocksLeft();
     return new Promise((resolve) => {
-      Alert.alert("Start Cycle?", cycleCommitment(unlocksLeft), [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        { text: "Start Cycle", onPress: () => resolve(true) },
-      ], { onDismiss: () => resolve(false) });
+      setCyclePrompt({
+        body: cycleCommitment(unlocksLeft),
+        resolve: (ok, hide) => {
+          setCyclePrompt(null);
+          if (ok && hide) void setCycleReminderHidden(true);
+          resolve(ok);
+        },
+      });
     });
   };
 
@@ -389,7 +425,7 @@ function AppContent() {
           {
             text: "Register card",
             onPress: () => {
-              void cancelCardRead();
+              dropScan();
               setScreen("cardSetup");
             },
           },
@@ -417,7 +453,7 @@ function AppContent() {
             void (async () => {
               // Drop the open read first. The tafik call still waiting on it
               // sees a cancelled scan and bails, so nothing starts twice.
-              await cancelCardRead();
+              dropScan();
               try {
                 if (cycle) await startCycle();
                 else await startSession();
@@ -432,6 +468,23 @@ function AppContent() {
         },
       ]
     );
+  };
+
+  // Moves a waiting Cycle phase on. The native state decides what comes next: the Break, the next
+  // Study, or the end of the session, which the poll then completes as usual.
+  const onAdvanceCycle = async () => {
+    if (!cycleSession?.awaiting || advancingCycle.current) return;
+    advancingCycle.current = true;
+    try {
+      const finalBreak = cycleSession.phase === "break" && cycleSession.currentRound >= cycleSession.totalRounds;
+      if (finalBreak) {
+        await finishCycleSession();
+        return;
+      }
+      if (await advanceCycle()) setCycleSession(await getBlockingSessionState());
+    } finally {
+      advancingCycle.current = false;
+    }
   };
 
   // A break is the one point in a cycle where the card works again.
@@ -560,6 +613,7 @@ function AppContent() {
             startedAt={startedAt}
             blockCount={blockCount}
             focusMode={focusMode}
+            onShareOpenChange={setShareOpen}
           />
         )}
         {screen === "nfc" && (
@@ -568,6 +622,7 @@ function AppContent() {
             active={active}
             blockCount={blockCount}
             cycleMode={focusMode === "cycle"}
+            startedAt={startedAt}
             scanning={scanning === "end" ? "end" : scanning === null ? null : "start"}
             onTafik={() => void tafik()}
             onStartWithoutCard={() => void startWithoutCard()}
@@ -580,6 +635,7 @@ function AppContent() {
             scanning={scanning === "cycle"}
             blockCount={blockCount}
             onEndWithCard={() => void endCycleWithCard()}
+            onAdvance={() => void onAdvanceCycle()}
             onEmergency={() => setScreen("emergency")}
             onDone={() => {
               setCycleCompleted(false);
@@ -615,7 +671,7 @@ function AppContent() {
         )}
         </ScreenFade>
         </TabBarBelowContext.Provider>
-        {(screen === "home" ||
+        {!shareOpen && (screen === "home" ||
           screen === "insights" ||
           screen === "blocklist" ||
           screen === "settings" ||
@@ -624,12 +680,20 @@ function AppContent() {
             current={screen}
             nav={setScreen}
             onTafik={() => void tafik()}
-            onCancel={() => void cancelCardRead()}
+            onCancel={dropScan}
             active={active}
             scanning={scanning !== null}
             cycle={focusMode === "cycle"}
+            cycleActive={active && cycleSession?.mode === "cycle"}
           />
         )}
+
+        <CycleStartPrompt
+          visible={cyclePrompt !== null}
+          body={cyclePrompt?.body ?? ""}
+          onCancel={() => cyclePrompt?.resolve(false, false)}
+          onStart={(hide) => cyclePrompt?.resolve(true, hide)}
+        />
 
       </View>
     </>

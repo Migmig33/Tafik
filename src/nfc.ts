@@ -36,26 +36,37 @@ export async function isNfcReady(): Promise<boolean> {
 // resolves as { cancelled: true } rather than an error the UI would alert about.
 let readInFlight = false;
 let readCancelled = false;
+// The last attempt, from its first request to its cancel. The next attempt waits for all of
+// it, so the reader never holds two requests at once, even while a cancel is still settling.
+let attempts: Promise<void> = Promise.resolve();
 
 async function readUidOnce(): Promise<string | null> {
-  await ensureNfcStarted();
-  readCancelled = false;
-  readInFlight = true;
+  const previous = attempts;
+  let done!: () => void;
+  attempts = new Promise<void>((resolve) => (done = resolve));
   try {
-    // NfcA covers the large majority of Android cards (NTAG, MIFARE,
-    // most access cards). Add NfcB/NfcF/NfcV fallbacks later if you need
-    // to support less common tags.
-    await NfcManager.requestTechnology(NfcTech.NfcA);
-    const tag = await NfcManager.getTag();
-    const uid = tag?.id ?? null;
-    return uid ? uid.toLowerCase() : null;
-  } finally {
-    readInFlight = false;
+    await previous;
+    await ensureNfcStarted();
+    readCancelled = false;
+    readInFlight = true;
     try {
-      await NfcManager.cancelTechnologyRequest();
-    } catch {
-      /* no-op */
+      // NfcA covers the large majority of Android cards (NTAG, MIFARE,
+      // most access cards). Add NfcB/NfcF/NfcV fallbacks later if you need
+      // to support less common tags.
+      await NfcManager.requestTechnology(NfcTech.NfcA);
+      const tag = await NfcManager.getTag();
+      const uid = tag?.id ?? null;
+      return uid ? uid.toLowerCase() : null;
+    } finally {
+      readInFlight = false;
+      try {
+        await NfcManager.cancelTechnologyRequest();
+      } catch {
+        /* no-op */
+      }
     }
+  } finally {
+    done();
   }
 }
 

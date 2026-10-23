@@ -237,6 +237,7 @@ export function CycleWheels({
       <Colon />
       <Wheel
         label="Break"
+        diamond={false}
         value={breakMinutes}
         min={1}
         max={60}

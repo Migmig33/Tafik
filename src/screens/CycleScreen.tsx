@@ -1,54 +1,21 @@
-import { useEffect, useState } from "react";
-import { ScrollView, StyleProp, StyleSheet, TextStyle, View } from "react-native";
-import BookOpenCheck from "lucide-react-native/icons/book-open-check";
+import { useEffect, useRef, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { StyleSheet, View } from "react-native";
 import Check from "lucide-react-native/icons/circle-check";
-import Coffee from "lucide-react-native/icons/coffee";
 import type { BlockingSessionState } from "../blocking";
-import {
-  AnimatedSwapText,
-  Body,
-  GhostButton,
-  PrimaryButton,
-  Screen,
-  TapRipple,
-  Title,
-} from "../components";
+import { AppMark, Body, GhostButton, PrimaryButton, Screen, Title } from "../components";
+import CycleDial from "../cycleDial";
+import { remainingCycles } from "../cycleCount";
+import { useExpoBlur } from "../softBlur";
+import EmergencyExitButton from "../emergencyExit";
 import { getCycleConfig } from "../store";
 import { latestSessionCard, SessionCardFacts, SessionCardModal } from "../sessionCard";
 import { colors, space, typeScale } from "../theme";
-import { ScrollEdgeFade, useScrollEdge } from "../scrollEdge";
 import { Text } from "../typography";
 
-function countdown(seconds: number): string {
-  const safe = Math.max(0, Math.ceil(seconds));
-  const minutes = Math.floor(safe / 60);
-  return `${minutes.toString().padStart(2, "0")}:${(safe % 60).toString().padStart(2, "0")}`;
-}
-
-/**
- * The live countdown. It owns its own tick, so the 4-per-second re-render stays
- * on these digits and the circle, header and buttons around them are not rebuilt.
- */
-function LiveCountdown({ endsAt, label, style }: { endsAt: number; label: string; style: StyleProp<TextStyle> }) {
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, []);
-
-  const secondsLeft = (endsAt - now) / 1000;
-  return (
-    <Text
-      accessibilityRole="timer"
-      accessibilityLabel={`${label} time ${countdown(secondsLeft)}`}
-      style={style}
-    >
-      {countdown(secondsLeft)}
-    </Text>
-  );
-}
+// The phase whose completion has already been tapped on this device. Module-level, so it survives
+// leaving and returning to the screen within the app's process.
+let lastHapticPhase: string | null = null;
 
 /**
  * The face of a running cycle. The schedule itself is chosen in
@@ -61,6 +28,7 @@ export default function CycleScreen({
   scanning,
   blockCount,
   onEndWithCard,
+  onAdvance,
   onEmergency,
   onDone,
 }: {
@@ -69,14 +37,19 @@ export default function CycleScreen({
   scanning: boolean;
   blockCount: number;
   onEndWithCard: () => void;
+  /** Moves a waiting phase on: Start Break, Start Next Cycle, or the end of the session. */
+  onAdvance: () => void;
   onEmergency: () => void;
   onDone: () => void;
 }) {
-  const edge = useScrollEdge();
   const [rounds, setRounds] = useState<number | null>(null);
   // The card for the Tempo session that just completed, read back from storage.
   const [shareable, setShareable] = useState<SessionCardFacts | null>(null);
   const [openCard, setOpenCard] = useState<SessionCardFacts | null>(null);
+  // The share editor blurs the completion screen behind it: the content inside this blur target.
+  const blurTarget = useRef<View>(null);
+  const blur = useExpoBlur();
+  const Target = blur?.BlurTargetView ?? View;
 
   useEffect(() => {
     getCycleConfig().then((saved) => setRounds(saved.rounds));
@@ -86,80 +59,56 @@ export default function CycleScreen({
     if (completed) void latestSessionCard("cycle").then(setShareable);
   }, [completed]);
 
+  // A haptic tap as each phase runs out, once per phase. The last phase tapped is kept at module
+  // level, so leaving and returning to this screen does not replay it.
+  useEffect(() => {
+    const waiting = session?.active && session.mode === "cycle" && session.awaiting
+      ? `${session.phase}:${session.currentRound}`
+      : null;
+    if (!waiting || lastHapticPhase === waiting) return;
+    lastHapticPhase = waiting;
+    try {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch {
+      // A build without the haptics module simply has no tap; the notification still sounds.
+    }
+  }, [session]);
+
   if (session?.active && session.mode === "cycle" && session.phase) {
     const study = session.phase === "study";
-    const PhaseIcon = study ? BookOpenCheck : Coffee;
-    // Deliberately the same shape as home's live Tafik session: same header,
-    // same outlined circle at the same size, same timer beneath it. Only the
-    // mark inside the circle and the counting direction differ.
+    const remaining = remainingCycles(session);
+    const awaiting = session.awaiting === true;
+    const finalBreak = !study && session.currentRound >= session.totalRounds;
+    const advanceLabel = study ? "Start Break" : finalBreak ? "Finish Session" : "Start Next Cycle";
+    // Only the dial and the Emergency Exit. In a Break the dial is also how the card ends the
+    // cycle: tapping it reads the card, and it is inert while a read is already open.
     return (
-      <Screen tinted={study}>
-        <View style={{ flex: 1 }}>
-          <ScrollView {...edge.scrollProps} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-            <View style={styles.homeHeader}>
-              <AnimatedSwapText value="Cycle">
-                {(label) => <Title>{label}</Title>}
-              </AnimatedSwapText>
-              <View style={[styles.streakPill, { backgroundColor: colors.accentWash }]}>
-                <PhaseIcon size={17} color={colors.accent} strokeWidth={2.3} />
-                <AnimatedSwapText
-                  value={
-                    scanning
-                      ? "Ready to scan"
-                      : `${study ? "Study" : "Break"} ${session.currentRound}/${session.totalRounds}`
-                  }
-                >
-                  {(label) => (
-                    <Text style={{ color: colors.text, ...typeScale.callout, fontWeight: "600" }}>
-                      {label}
-                    </Text>
-                  )}
-                </AnimatedSwapText>
+      <Screen>
+        <View style={styles.activeColumn}>
+          <View style={styles.brandMark}>
+            <AppMark height={32} color={colors.text} />
+          </View>
+          <View style={styles.timerArea}>
+            <CycleDial
+              phase={session.phase}
+              startedAt={session.phaseStartedAt}
+              endsAt={session.phaseEndsAt}
+              onPress={study || scanning || awaiting ? undefined : onEndWithCard}
+            />
+            {awaiting ? (
+              <View style={styles.advance}>
+                <PrimaryButton label={advanceLabel} onPress={onAdvance} />
               </View>
-            </View>
-
-            <View style={styles.focusCluster}>
-              <View style={styles.activeFocusContent}>
-                <TapRipple active={scanning} size={184} coreSize={116}>
-                  <PhaseIcon size={64} color={colors.text} strokeWidth={1.7} />
-                </TapRipple>
-                <LiveCountdown
-                  endsAt={session.phaseEndsAt}
-                  label={study ? "Study" : "Break"}
-                  style={[styles.activeTimer, { color: colors.text }]}
-                />
-                <Body dim>
-                  {study
-                    ? `${blockCount} apps blocked`
-                    : "Apps are available during this break"}
-                </Body>
-                {scanning ? (
-                  <Text style={[styles.scanInstruction, { color: colors.textDim }]}>
-                    Hold your card to the back of your phone.
-                  </Text>
-                ) : (
-                  <Text style={[styles.scanInstruction, { color: colors.textDim }]}>
-                    {study
-                      ? "Stay with what matters. The next break starts on its own."
-                      : "The next Study starts automatically."}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* A break is the only point where the cycle can be ended normally.
-                During Study the card is deliberately inert, so the way out there
-                is the emergency unlock and its cost. */}
-            {study ? null : (
-              <PrimaryButton
-                label={scanning ? "Waiting for NFC card..." : "Tap card to end Cycle"}
-                disabled={scanning}
-                onPress={onEndWithCard}
-              />
-            )}
-            <GhostButton label="Emergency Exit" onPress={onEmergency} />
-          </ScrollView>
-          <ScrollEdgeFade visible={edge.visible} />
+            ) : null}
+          </View>
+          <View style={styles.emergency}>
+            <EmergencyExitButton onPress={onEmergency} />
+          </View>
+          {/* The cycles still to run: a small label with the number beneath it, at the very bottom. */}
+          <View style={styles.cycleCount} accessibilityLabel={`${remaining} ${remaining === 1 ? "cycle" : "cycles"} remaining`}>
+            <Text style={[styles.cycleLabel, { color: colors.textDim }]}>Cycle</Text>
+            <Text style={[styles.cycleNumber, { color: colors.text }]}>{remaining}</Text>
+          </View>
         </View>
       </Screen>
     );
@@ -168,6 +117,7 @@ export default function CycleScreen({
   if (completed) {
     return (
       <Screen>
+        <Target ref={blurTarget} style={{ flex: 1 }}>
         <View style={styles.simpleHeader}>
           <Title>Cycle</Title>
         </View>
@@ -188,22 +138,31 @@ export default function CycleScreen({
           <GhostButton label="Share session card" onPress={() => setOpenCard(shareable)} />
         ) : null}
         <PrimaryButton label="Done" onPress={onDone} />
-        <SessionCardModal facts={openCard} onClose={() => setOpenCard(null)} />
+        </Target>
+        <SessionCardModal facts={openCard} onClose={() => setOpenCard(null)} blurTarget={blurTarget} />
       </Screen>
     );
   }
 
-  // Reachable only if a session ends between the router deciding on this screen
-  // and the render, so it just needs a way back rather than a design.
+  // No Cycle is running: after a finished or stopped session, or when the page opens without one.
+  // The brand mark anchors the top as it does on the live screen, and the one action leads back
+  // to Home, where the centre button starts a new Cycle.
   return (
     <Screen>
-      <View style={styles.simpleHeader}>
-        <Title>Cycle</Title>
+      <View style={styles.emptyColumn}>
+        <View style={styles.brandMark}>
+          <AppMark height={32} color={colors.text} />
+        </View>
+        <View style={styles.emptyCenter}>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Cycle running</Text>
+          <Text style={[styles.emptyBody, { color: colors.textDim }]}>
+            Start one from Home. Tap the centre button, then hold your card to the phone.
+          </Text>
+        </View>
+        <View style={styles.emptyAction}>
+          <PrimaryButton label="Start a Cycle" onPress={onDone} />
+        </View>
       </View>
-      <View style={styles.completionArea}>
-        <Body dim>No cycle is running. Start one by tapping your card on home.</Body>
-      </View>
-      <PrimaryButton label="Back to home" onPress={onDone} />
     </Screen>
   );
 }
@@ -266,6 +225,71 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: space(1),
+  },
+  // The active session: the dial in the middle of the screen, the Emergency Exit well below it.
+  activeColumn: {
+    flex: 1,
+    alignItems: "center",
+  },
+  brandMark: {
+    marginTop: space(3),
+  },
+  // The countdown takes the room between the brand mark and Emergency Exit, and sits centred in it.
+  timerArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emergency: {
+    marginBottom: space(4),
+  },
+  // The empty state: no Cycle running. The message is centred in the room above one action.
+  emptyColumn: {
+    flex: 1,
+  },
+  emptyCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space(2),
+    paddingHorizontal: space(2),
+  },
+  emptyTitle: {
+    fontSize: typeScale.title.fontSize,
+    lineHeight: typeScale.title.lineHeight,
+    fontWeight: "600",
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  emptyBody: {
+    fontSize: typeScale.callout.fontSize,
+    lineHeight: typeScale.callout.lineHeight,
+    textAlign: "center",
+  },
+  emptyAction: {
+    marginBottom: space(1),
+  },
+  // The next action, shown only once a phase has run out. It sits clear of the countdown.
+  // A fixed width, so the label has room on both sides and the button stays centred under the dial.
+  advance: {
+    width: 240,
+    marginTop: space(5),
+  },
+  // Clear of the Emergency Exit above, and at the bottom of the screen.
+  cycleCount: {
+    alignItems: "center",
+    marginBottom: space(3),
+  },
+  // The label is small and quiet; the remaining count sits beneath it, a step larger.
+  cycleLabel: {
+    ...typeScale.caption,
+    fontWeight: "600",
+  },
+  cycleNumber: {
+    ...typeScale.headline,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+    includeFontPadding: false,
   },
   completionTitle: {
     fontSize: typeScale.title.fontSize,
